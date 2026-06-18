@@ -1,0 +1,239 @@
+/* ── Dark Theme Tokens ─────────────────────────────── */
+html.dark {
+  /* ── Palette ─────────────────────────────────────── */
+  --bg: #0f172a;
+  --bg-subtle: #1e293b;
+  --surface: #1e293b;
+  --surface-raised: #334155;
+  --border: #334155;
+  --border-light: #2d3a4f;
+
+  /* Brand */
+  --brand: #2dd4bf;
+  --brand-hover: #14b8a6;
+  --brand-soft: rgba(45, 212, 191, 0.15);
+  --brand-muted: rgba(45, 212, 191, 0.08);
+
+  /* Text */
+  --text-primary: #f1f5f9;
+  --text-secondary: #94a3b8;
+  --text-muted: #64748b;
+  --text-inverse: #0f172a;
+
+  /* Semantic */
+  --success: #34d399;
+  --success-soft: rgba(52, 211, 153, 0.15);
+  --warning: #fbbf24;
+  --warning-soft: rgba(251, 191, 36, 0.15);
+  --danger: #f87171;
+  --danger-soft: rgba(248, 113, 113, 0.15);
+  --info: #60a5fa;
+  --info-soft: rgba(96, 165, 250, 0.15);
+
+  /* Debt & Borrow */
+  --debt: #a78bfa;
+  --debt-soft: rgba(167, 139, 250, 0.15);
+  --debt-border: rgba(167, 139, 250, 0.3);
+  --borrow: #f87171;
+  --borrow-soft: rgba(248, 113, 113, 0.15);
+  --borrow-border: rgba(248, 113, 113, 0.3);
+
+  /* Shadows — lighter for dark mode */
+  --shadow-xs: 0 1px 2px 0 rgba(0, 0, 0, 0.3);
+  --shadow-sm: 0 1px 3px 0 rgba(0, 0, 0, 0.4), 0 1px 2px -1px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.4), 0 2px 4px -2px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.4), 0 4px 6px -4px rgba(0, 0, 0, 0.3);
+  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.3);
+
+  /* Semantic shadows */
+  --brand-shadow-sm: rgba(45, 212, 191, 0.2);
+  --brand-shadow-md: rgba(45, 212, 191, 0.3);
+  --warning-shadow: rgba(251, 191, 36, 0.2);
+  --danger-shadow: rgba(248, 113, 113, 0.2);
+  --info-shadow: rgba(96, 165, 250, 0.2);
+  --overlay-bg: rgba(0, 0, 0, 0.6);
+  --table-shadow: rgba(0, 0, 0, 0.3);
+
+  /* Tag borders */
+  --tag-success-border: rgba(52, 211, 153, 0.3);
+  --tag-warning-border: rgba(251, 191, 36, 0.3);
+  --tag-danger-border: rgba(248, 113, 113, 0.3);
+  --tag-info-border: rgba(96, 165, 250, 0.3);
+  --tag-brand-border: rgba(45, 212, 191, 0.3);
+
+  /* Element Plus overrides for dark mode */
+  --el-color-primary: var(--brand);
+  --el-color-primary-light-3: var(--brand-soft);
+  --el-color-primary-dark-2: var(--brand-hover);
+  --el-color-warning: var(--warning);
+  --el-color-danger: var(--danger);
+  --el-bg-color: var(--surface);
+  --el-fill-color-blank: var(--surface);
+  --el-border-color: var(--border);
+  --el-border-color-light: var(--border-light);
+  --el-fill-color-lightest: var(--bg-subtle);
+  
+  /* Additional Element Plus variables for complete dark mode */
+  --el-bg-color-page: var(--bg);
+  --el-bg-color-overlay: var(--surface-raised);
+  --el-text-color-primary: var(--text-primary);
+  --el-text-color-regular: var(--text-secondary);
+  --el-text-color-secondary: var(--text-muted);
+  --el-text-color-placeholder: var(--text-muted);
+  --el-text-color-disabled: #4b5563;
+  --el-border-color-dark: var(--border);
+  --el-border-color-lighter: var(--border-light);
+  --el-border-color-extra-light: var(--border-light);
+  --el-fill-color: var(--bg-subtle);
+  --el-fill-color-light: var(--bg-subtle);
+  --el-fill-color-lighter: var(--bg-subtle);
+  --el-fill-color-dark: var(--surface-raised);
+  --el-fill-color-darker: var(--surface-raised);
+  --el-fill-color-extra-light: rgba(255, 255, 255, 0.03);
+  --el-mask-color: rgba(0, 0, 0, 0.5);
+  --el-mask-color-extra-light: rgba(0, 0, 0, 0.3);
+  --el-box-shadow: var(--shadow-md);
+  --el-box-shadow-light: var(--shadow-sm);
+  --el-box-shadow-lighter: var(--shadow-xs);
+  
+  /* Element Plus component-specific dark mode variables */
+  --el-menu-bg-color: var(--surface);
+  --el-menu-text-color: var(--text-secondary);
+  --el-menu-hover-text-color: var(--brand);
+  --el-menu-active-color: var(--brand);
+  --el-menu-hover-bg-color: var(--bg-subtle);
+  --el-menu-bg-color-dark: var(--surface);
+  --el-dialog-background-color: var(--surface);
+  --el-select-dropdown-bg-color: var(--surface);
+  --el-select-border-color-hover: var(--brand);
+  --el-input-border-color: var(--border);
+  --el-input-bg-color: var(--surface);
+  --el-table-border-color: var(--border-light);
+  --el-table-bg-color: var(--surface);
+  --el-table-tr-bg-color: var(--surface);
+  --el-table-header-bg-color: var(--bg-subtle);
+  --el-table-row-hover-bg-color: var(--bg-subtle);
+  --el-table-row-hover-bg-color-alt: var(--surface);
+  --el-pagination-bg-color: var(--surface);
+  --el-pagination-button-bg-color: var(--surface);
+  --el-pagination-button-disabled-bg-color: var(--bg-subtle);
+  --el-card-bg-color: var(--surface);
+  --el-tag-bg-color: var(--bg-subtle);
+  --el-popover-bg-color: var(--surface);
+  --el-tooltip-bg-color: var(--surface-raised);
+  --el-dropdown-menuItem-hover-fill: var(--bg-subtle);
+  --el-drawer-bg-color: var(--surface);
+  --el-form-label-text-color: var(--text-secondary);
+}
+
+/* Element Plus Dark Mode Component Overrides */
+html.dark {
+  /* Dropdown menu */
+  --el-dropdown-menu-bg-color: var(--surface);
+  --el-dropdown-menuItem-hover-fill: var(--bg-subtle);
+  
+  /* Select dropdown */
+  --el-select-option-bg-color: var(--surface);
+  --el-select-option-selected-bg-color: var(--bg-subtle);
+  --el-select-option-hover-bg-color: var(--bg-subtle);
+  
+  /* Date picker */
+  --el-datepicker-bg-color: var(--surface);
+  --el-datepicker-border-color: var(--border);
+  --el-datepicker-header-bg-color: var(--surface-raised);
+  --el-datepicker-inrange-bg-color: var(--brand-soft);
+  --el-datepicker-inrange-hover-bg-color: var(--brand-muted);
+  --el-datepicker-active-color: var(--brand);
+  --el-datepicker-cell-text-color: var(--text-primary);
+  
+  /* Message box & notifications */
+  --el-msgbox-bg-color: var(--surface);
+  --el-message-bg-color: var(--surface);
+  --el-notification-bg-color: var(--surface);
+  
+  /* Dialog */
+  --el-dialog-bg-color: var(--surface);
+  --el-dialog-header-border-color: var(--border-light);
+  
+  /* Drawer */
+  --el-drawer-bg-color: var(--surface);
+  
+  /* Popover & Tooltip */
+  --el-popover-bg-color: var(--surface);
+  --el-popover-border-color: var(--border-light);
+  --el-tooltip-bg-color: var(--surface-raised);
+  --el-tooltip-text-color: var(--text-primary);
+  
+  /* Loading */
+  --el-loading-spinner-color: var(--brand);
+  --el-loading-background-color: rgba(0, 0, 0, 0.5);
+  
+  /* Scrollbar */
+  --el-scrollbar-bg-color: var(--text-muted);
+  --el-scrollbar-hover-bg-color: var(--text-secondary);
+  
+  /* Switch */
+  --el-switch-off-bg-color: var(--border);
+  --el-switch-on-bg-color: var(--brand);
+  
+  /* Checkbox & Radio */
+  --el-checkbox-bg-color: var(--surface);
+  --el-checkbox-input-border-color-hover: var(--brand);
+  --el-radio-bg-color: var(--surface);
+  --el-radio-input-border-color-hover: var(--brand);
+  
+  /* Slider */
+  --el-slider-main-bg-color: var(--brand);
+  --el-slider-runway-bg-color: var(--border-light);
+  
+  /* Progress */
+  --el-progress-bar-inner-bg-color: var(--brand);
+  --el-progress-bar-bg-color: var(--border-light);
+  
+  /* Breadcrumb */
+  --el-breadcrumb-text-color: var(--text-secondary);
+  --el-breadcrumb-separator-color: var(--text-muted);
+  
+  /* Link */
+  --el-link-text-color-regular: var(--brand);
+  
+  /* Avatar */
+  --el-avatar-bg-color: var(--bg-subtle);
+  --el-avatar-text-color: var(--text-primary);
+  
+  /* Empty */
+  --el-empty-fill-color-0: var(--surface);
+  --el-empty-fill-color-1: var(--bg-subtle);
+  --el-empty-fill-color-2: var(--border-light);
+  --el-empty-fill-color-3: var(--border);
+  --el-empty-fill-color-4: var(--text-muted);
+  --el-empty-fill-color-5: var(--text-secondary);
+  --el-empty-fill-color-6: var(--text-primary);
+  --el-empty-fill-color-7: var(--brand-soft);
+  --el-empty-fill-color-8: var(--brand-muted);
+  --el-empty-fill-color-9: var(--brand);
+}
+
+/* Smooth transitions for theme switching */
+html.dark,
+html.dark body,
+html.dark *,
+html.dark *:before,
+html.dark *:after {
+  transition: background-color 0.3s ease,
+              border-color 0.3s ease,
+              color 0.3s ease,
+              box-shadow 0.3s ease;
+}
+
+/* ── Dark Mode Only Overrides ─────────────────────────── */
+/* Only values that differ from the shared _element-plus.css */
+html.dark {
+  .el-image-viewer__mask {
+    background-color: rgba(0, 0, 0, 0.7) !important;
+  }
+
+  .el-scrollbar__bar {
+    background-color: rgba(100, 116, 139, 0.3) !important;
+  }
+}

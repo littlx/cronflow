@@ -1,0 +1,441 @@
+/* ── Section Header ───────────────────────────────── */
+.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px var(--space-5);
+  border-bottom: 1px solid var(--border-light);
+  gap: var(--space-4);
+  background: var(--surface);
+  min-height: 56px;
+}
+.section-header__left {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-shrink: 0;
+}
+.section-header__title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.section-header__title::before {
+  content: '';
+  width: 3px;
+  height: 14px;
+  background: var(--brand);
+  border-radius: 2px;
+}
+.section-header__right {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.meta-count { font-size: 13px; color: var(--text-muted); font-weight: 500; }
+.meta-count--summary { margin-left: var(--space-3); padding-left: var(--space-3); border-left: 1px solid var(--border); color: var(--brand); }
+.table-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+/* ── Form Panel ──────────────────────────────────── */
+.form-section {
+  padding: var(--space-5);
+  border-bottom: 1px solid var(--border-light);
+}
+.form-section:last-child { border-bottom: none; }
+.form-section__title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: var(--space-4);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.form-section__title::before {
+  content: '';
+  width: 4px;
+  height: 16px;
+  border-radius: 2px;
+  background: var(--brand);
+}
+
+/* ── Table Toolbar ───────────────────────────────── */
+.table-toolbar {
+  padding: 12px var(--space-5);
+  border-bottom: 1px solid var(--border-light);
+  background: var(--surface);
+  min-height: 56px;
+  display: flex;
+  align-items: center;
+}
+.table-toolbar .filter-bar {
+  width: 100%;
+}
+
+/* ── Filter Bar ──────────────────────────────────── */
+.filter-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap; /* Wrap filters instead of scrolling horizontally */
+  justify-content: flex-end; /* Align filters to the right to contrast with title */
+  min-width: 0;
+  flex: 1;
+}
+
+@media (max-width: 768px) {
+  .section-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .filter-bar {
+    width: 100%;
+    justify-content: flex-start;
+  }
+}
+
+.filter-group {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  flex-shrink: 1;
+  min-width: 0;
+  padding: 0 12px;
+  background: var(--bg-subtle);
+  border: 1px solid var(--border-light);
+  border-radius: 4px;
+  transition: border-color var(--transition-fast), background-color var(--transition-fast), box-shadow var(--transition-fast);
+  height: 36px;
+}
+.filter-group:hover {
+  border-color: var(--text-muted);
+}
+.filter-group:focus-within {
+  border-color: var(--brand);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+}
+
+.filter-group .filter-bar__label {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-weight: 700;
+  white-space: nowrap;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding-right: 10px;
+  border-right: 1px solid var(--border);
+  margin-right: 8px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  line-height: 1;
+}
+
+.filter-spacer { flex: 1; }
+
+.filter-sep {
+  width: 1px;
+  height: 20px;
+  background: var(--border-light);
+  margin: 0 var(--space-1);
+}
+
+/* ── Filter Group Element Plus Overrides ─────────── */
+.filter-group .el-input,
+.filter-group .el-select,
+.filter-group .el-date-editor {
+  height: 100% !important;
+  vertical-align: middle;
+}
+
+.filter-group .el-input__wrapper,
+.filter-group .el-select__wrapper,
+.filter-group .el-date-editor.el-input__wrapper {
+  box-shadow: none !important;
+  border: none !important;
+  outline: none !important;
+  background: transparent !important;
+  height: 100% !important;
+  padding: 0 !important;
+  margin: 0 !important;
+}
+
+.filter-group .el-input__wrapper.is-focus,
+.filter-group .el-select__wrapper.is-focused,
+.filter-group .el-select__wrapper.is-focus,
+.filter-group .el-select.is-focus .el-select__wrapper,
+.filter-group .el-select:focus-within .el-select__wrapper,
+.filter-group .el-input__wrapper:focus-within {
+  box-shadow: none !important;
+  border: none !important;
+  outline: none !important;
+}
+
+.filter-group .el-input__inner,
+.filter-group .el-select__inner {
+  height: 100% !important;
+  border: none !important;
+  box-shadow: none !important;
+  outline: none !important;
+  padding: 0 !important;
+}
+
+/* ── Pagination Wrap ──────────────────────────────── */
+.pagination-wrap {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  padding: var(--space-4) var(--space-5);
+  border-top: 1px solid var(--border-light);
+}
+
+/* ── Filter Popover ──────────────────────────────── */
+.filter-popover {
+  z-index: 3000 !important;
+  padding: 24px 28px !important;
+  border-radius: var(--radius-lg) !important;
+  box-shadow: var(--shadow-lg) !important;
+  border: 1px solid var(--border-light) !important;
+}
+
+/* ── Action Bar ──────────────────────────────────── */
+.action-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 16px;
+  gap: var(--space-4);
+  background: var(--surface);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-light);
+  box-shadow: var(--shadow-xs);
+  margin-bottom: var(--space-5);
+  transition: box-shadow var(--transition-base), transform var(--transition-base);
+}
+.action-bar:hover {
+  border-color: var(--brand-soft);
+}
+
+.action-bar__tabs {
+  display: flex;
+  background: var(--bg-subtle);
+  padding: 4px;
+  border-radius: var(--radius-md);
+  gap: 2px;
+  border: 1px solid var(--border-light);
+  position: relative;
+  overflow: hidden;
+}
+
+/* ── Tab Slider ──────────────────────────────────── */
+.tab-slider {
+  position: absolute;
+  top: 4px;
+  left: 0;
+  height: calc(100% - 8px);
+  background: var(--surface);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-sm);
+  will-change: transform;
+  transition: transform 250ms cubic-bezier(0.4, 0, 0.2, 1);
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* ── Tab ─────────────────────────────────────────── */
+.tab {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 6px 14px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  transition: color var(--transition-base);
+  user-select: none;
+  position: relative;
+  z-index: 1;
+}
+.tab:hover {
+  color: var(--text-primary);
+}
+.tab--active {
+  color: var(--brand);
+  font-weight: 600;
+}
+
+.tab-icon {
+  width: 14px;
+  height: 14px;
+  opacity: 0.8;
+}
+.tab--active .tab-icon {
+  opacity: 1;
+}
+
+/* ── Form Card ──────────────────────────────────── */
+.form-card {
+  overflow: hidden;
+  margin-bottom: var(--space-6);
+  transform-origin: top;
+  transform: scaleY(1);
+  opacity: 1;
+  will-change: transform, opacity;
+  transition:
+    transform 200ms cubic-bezier(0.4, 0, 0.2, 1),
+    opacity 200ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+.form-card--collapsed {
+  transform: scaleY(0);
+  opacity: 0;
+}
+.form-card--hidden {
+  display: none;
+}
+.form-card--exiting {
+  pointer-events: none;
+}
+
+.form-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-4) var(--space-5);
+  border-bottom: 1px solid var(--border-light);
+}
+.form-card__title { font-size: 15px; font-weight: 600; color: var(--text-primary); margin: 0; }
+
+/* ── Form Grid ────────────────────────────────────── */
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--space-5);
+  padding: var(--space-5);
+}
+.form-grid--3 { grid-template-columns: repeat(3, 1fr); }
+.form-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--space-5);
+  padding: var(--space-5);
+}
+.span-2 { grid-column: span 2; }
+
+/* ── Form Label Enhancements ─────────────────────── */
+.el-form-item__label {
+  display: flex !important;
+  align-items: center;
+  justify-content: flex-start;
+  min-height: 20px;
+  line-height: 1.2 !important;
+  padding-bottom: 8px !important;
+  width: 100%;
+}
+
+.form-label-with-balance,
+.form-label-with-checkbox,
+.form-label-custom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  gap: var(--space-2);
+}
+
+.inline-balance {
+  font-size: 11px;
+  font-weight: 500;
+  padding: 0 6px;
+  border-radius: var(--radius-xs);
+  background: var(--bg-subtle);
+}
+.balance--debt   { color: var(--danger); background: var(--danger-soft); }
+.balance--credit { color: var(--success); background: var(--success-soft); }
+.balance--zero   { color: var(--text-muted); }
+
+.auto-calc-check {
+  margin-left: auto;
+  height: auto !important;
+}
+.auto-calc-check .el-checkbox__label {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-weight: normal;
+}
+
+/* ── Form Footer ─────────────────────────────────── */
+.form-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-4) var(--space-5);
+  background: var(--bg-subtle);
+  border-top: 1px solid var(--border-light);
+  gap: var(--space-4);
+}
+.form-actions { display: flex; gap: var(--space-3); margin-left: auto; }
+
+/* ── Calc Summary ────────────────────────────────── */
+.calc-summary {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+.calc-summary__label { font-size: 13px; color: var(--text-muted); font-weight: 500; }
+.calc-summary__value {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--brand);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Table Card ──────────────────────────────────── */
+.table-card {
+  overflow: hidden;
+  margin-bottom: var(--space-6);
+  will-change: transform;
+  transition: border-color var(--transition-base), box-shadow var(--transition-base);
+}
+.table-card:hover {
+  border-color: var(--brand-soft);
+}
+
+/* ── Action Bar Button Animation ──────────────────── */
+.action-bar .el-button {
+  transition: transform 120ms ease-out, background-color 150ms ease-out, box-shadow 150ms ease-out;
+}
+.action-bar .el-button:active {
+  transform: scale(0.95);
+}
+
+/* ── Button Label Animation ──────────────────────── */
+.btn-label {
+  display: inline-block;
+  transition: opacity 180ms ease-out, transform 180ms cubic-bezier(0.34, 1.2, 0.64, 1);
+}
+.btn-label--animating {
+  opacity: 0;
+}
+
+@media (max-width: 960px) {
+  .form-grid { grid-template-columns: 1fr 1fr; }
+}
+
+@media (max-width: 500px) {
+  .form-grid, .form-grid--3 { grid-template-columns: 1fr; }
+}
+

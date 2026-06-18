@@ -1,0 +1,9 @@
+/* ── Additional Element Plus Overrides ─────────────── */
+
+/* Form inputs with .full class need explicit width */
+.full.el-input,
+.full.el-select,
+.full.el-date-editor,
+.full.el-input-number {
+  width: 100% !important;
+}
