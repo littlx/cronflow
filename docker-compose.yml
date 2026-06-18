@@ -55,18 +55,14 @@ services:
     build: ./backend
     container_name: cronflow-v2-worker
     restart: always
+    network_mode: host
     command: celery -A worker.celery_app.celery_app worker --loglevel=info
     environment:
-      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@db:5432/cronflow_v2
-      - DATABASE_URL_SYNC=postgresql+psycopg2://postgres:postgres@db:5432/cronflow_v2
-      - REDIS_URL=redis://redis:6379/0
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5433/cronflow_v2
+      - DATABASE_URL_SYNC=postgresql+psycopg2://postgres:postgres@localhost:5433/cronflow_v2
+      - REDIS_URL=redis://localhost:6380/0
     volumes:
       - ./backend:/app
-    depends_on:
-      db:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
 
   beat:
     build: ./backend
@@ -90,7 +86,7 @@ services:
     ports:
       - "5174:5173"   # 5174 避免与 v1 冲突
     environment:
-      - VITE_API_URL=http://localhost:8000
+      - VITE_API_URL=http://backend:8000
     volumes:
       - ./frontend:/app
       - /app/node_modules

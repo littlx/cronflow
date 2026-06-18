@@ -6,7 +6,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import get_db
 from app.deps import CurrentUser, get_current_user
-from app.schemas.task import CurlTaskCreate, CurlTaskUpdate, TaskOut, TriggerTaskIn
+from app.schemas.task import (
+    CurlTaskCreate,
+    CurlTaskUpdate,
+    TaskOut,
+    TriggerTaskIn,
+)
 from app.services import task_service
 from app.services.ref_resolver import resolve_ref_async
 

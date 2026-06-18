@@ -44,10 +44,16 @@ def execute(session: Session, resolved: ResolvedTask, task_args: dict[str, Any])
         raise RuntimeError(f"curl task {resolved.ref} 缺少 url")
 
     with httpx.Client(timeout=30.0) as client:
-        resp = client.request(
-            method=method, url=url, headers=headers,
-            json=data if (data and method != "GET") else None,
-        )
+        req_kwargs: dict = {"method": method, "url": url, "headers": headers}
+        if data and method != "GET":
+            if isinstance(data, (dict, list)):
+                req_kwargs["json"] = data
+            else:
+                # 字符串 body (form-urlencoded / raw); 若未显式声明 Content-Type, 默认 form
+                req_kwargs["content"] = str(data)
+                if not any(k.lower() == "content-type" for k in headers):
+                    headers["Content-Type"] = "application/x-www-form-urlencoded"
+        resp = client.request(**req_kwargs)
         resp.raise_for_status()
         try:
             body = resp.json()

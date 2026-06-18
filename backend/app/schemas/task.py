@@ -34,7 +34,7 @@ class CurlHandlerConfig(BaseModel):
     url: str
     method: str = "GET"
     headers: dict[str, str] = {}
-    data: dict[str, Any] | None = None
+    data: dict[str, Any] | str | None = None   # dict (JSON body) | str (form/raw) | None
     handler_type: str = "PURE_JSON"          # PURE_JSON | NESTED_DATA | RAW_RESPONSE
     target_collection: str
 

@@ -2,6 +2,7 @@
 import { ref, computed, onMounted } from 'vue'
 import client from '@/api/client'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { parseCurl } from '@/utils/curl'
 
 interface TaskParam { name: string; type: string; default: any; required: boolean; description?: string }
 interface Task {
@@ -37,6 +38,11 @@ const form = ref({
 const previewVisible = ref(false)
 const previewCollection = ref('')
 const previewData = ref<any[]>([])
+
+// 从 curl 命令导入
+const curlInput = ref('')
+const importVisible = ref(false)
+const curlPlaceholder = "curl 'https://api.example.com/data' -H 'Authorization: Bearer xxx' -H 'Content-Type: application/json' -d '{\"key\":\"value\"}'"
 
 const pythonTasks = computed(() => tasks.value.filter((t) => t.kind === 'python'))
 const curlTasks = computed(() => tasks.value.filter((t) => t.kind === 'curl'))
@@ -117,6 +123,48 @@ function resetForm() {
 function openCreate() {
   resetForm()
   dialogVisible.value = true
+}
+
+/** 从 curl 命令导入: 解析后填充表单 (前端解析, 不调后端) */
+function importFromCurl() {
+  if (!curlInput.value.trim()) {
+    ElMessage.warning('请粘贴 curl 命令')
+    return
+  }
+  try {
+    const parsed = parseCurl(curlInput.value)
+
+    // 走新建表单流程, 预填解析结果
+    editingId.value = null
+    form.value = {
+      name: '',
+      description: '',
+      url: parsed.url,
+      method: parsed.method,
+      headers: JSON.stringify(parsed.headers, null, 2),
+      data: parsed.data == null
+        ? ''
+        : (typeof parsed.data === 'string' ? parsed.data : JSON.stringify(parsed.data, null, 2)),
+      handler_type: 'PURE_JSON',
+      target_collection: guessCollection(parsed.url),
+    }
+    importVisible.value = false
+    curlInput.value = ''
+    dialogVisible.value = true
+    ElMessage.success('curl 命令解析成功, 已填充表单')
+  } catch (e: any) {
+    ElMessage.error('curl 解析失败: ' + (e?.message || String(e)))
+  }
+}
+
+/** 从 URL host 推断默认 target_collection */
+function guessCollection(url: string): string {
+  try {
+    const host = new URL(url).hostname || ''
+    return host.replace(/\./g, '_') || ''
+  } catch {
+    return ''
+  }
 }
 
 function openEdit(t: Task) {
@@ -215,8 +263,9 @@ onMounted(load)
             </el-tab-pane>
 
             <el-tab-pane label="cURL (表单配置)" name="curl">
-              <div style="margin-bottom:12px">
+              <div style="margin-bottom:12px;display:flex;gap:8px">
                 <el-button type="primary" @click="openCreate">+ 新建 cURL 任务</el-button>
+                <el-button @click="importVisible = true">📥 从 curl 命令导入</el-button>
               </div>
               <el-empty v-if="!curlTasks.length" description="暂无 cURL 任务" />
               <el-table v-else :data="curlTasks" v-loading="loading" size="small">
@@ -309,6 +358,27 @@ onMounted(load)
       <div v-else style="max-height:480px;overflow:auto">
         <pre v-for="(d,i) in previewData" :key="i" style="background:#0d1117;padding:10px;border-radius:6px;margin-bottom:8px;font-size:12px">{{ JSON.stringify(d.document, null, 2) }}</pre>
       </div>
+    </el-dialog>
+
+    <!-- 从 curl 命令导入 -->
+    <el-dialog v-model="importVisible" title="从 curl 命令导入" width="680px">
+      <p style="color:var(--text-secondary);font-size:13px;margin-bottom:10px">
+        粘贴完整的 curl 命令 (含 URL、-H、-d 等), 解析后自动填充到新建表单。
+      </p>
+      <el-input
+        v-model="curlInput"
+        type="textarea"
+        :rows="10"
+        :placeholder="curlPlaceholder"
+        style="font-family:var(--font-mono,monospace);font-size:12px"
+      />
+      <div style="color:var(--text-muted);font-size:12px;margin-top:8px">
+        支持: -X / -H / -d / --data-raw / --data-binary / --json / -A / -b / -e / -u / --compressed 等。
+      </div>
+      <template #footer>
+        <el-button @click="importVisible = false">取消</el-button>
+        <el-button type="primary" @click="importFromCurl">解析并填充表单</el-button>
+      </template>
     </el-dialog>
   </div>
 </template>
