@@ -24,6 +24,8 @@ class TaskLog(Base):
     schedule_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
     # 'running' | 'success' | 'failed'
     status: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
+    # 第几次尝试: 1=首次, 2=第一次重试, ... (重试时新建行而非覆盖)
+    attempt: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
 
     started_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, nullable=False
@@ -43,6 +45,7 @@ class TaskLog(Base):
             "trigger_type": self.trigger_type,
             "schedule_id": self.schedule_id,
             "status": self.status,
+            "attempt": self.attempt,
             "started_at": self.started_at.isoformat() if self.started_at else None,
             "finished_at": self.finished_at.isoformat() if self.finished_at else None,
             "duration": self.duration,

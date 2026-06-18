@@ -1,4 +1,8 @@
-"""统一任务路由 — python (只读, 来自注册表) + curl (CRUD, 入库)。"""
+"""统一任务路由 — python (只读, 来自注册表) + curl (CRUD, 入库)。
+
+路由顺序约定: 所有具体路径 (`/curl`, `/curl/{id}`, `/trigger`) 必须排在
+通配 `GET /{ref:path}` 之前, 否则后者会吞掉所有同方法子路径。
+"""
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -27,17 +31,7 @@ async def list_tasks(
     return await task_service.list_all_tasks(db, kind=kind)
 
 
-@router.get("/{ref:path}", response_model=TaskOut)
-async def get_task(
-    ref: str,
-    db: AsyncSession = Depends(get_db),
-    user: CurrentUser = Depends(get_current_user),
-):
-    view = await task_service.get_task_view(db, ref)
-    if not view:
-        raise HTTPException(status_code=404, detail=f"任务不存在: {ref}")
-    return view
-
+# ---- 具体路径优先 ----
 
 @router.post("/curl", response_model=TaskOut)
 async def create_curl_task(
@@ -95,3 +89,17 @@ async def trigger_task(
         },
     )
     return {"ok": True, "celery_id": result.id, "task_ref": payload.task_ref, "kind": resolved.kind}
+
+
+# ---- 通配兜底, 放最后 ----
+
+@router.get("/{ref:path}", response_model=TaskOut)
+async def get_task(
+    ref: str,
+    db: AsyncSession = Depends(get_db),
+    user: CurrentUser = Depends(get_current_user),
+):
+    view = await task_service.get_task_view(db, ref)
+    if not view:
+        raise HTTPException(status_code=404, detail=f"任务不存在: {ref}")
+    return view

@@ -99,3 +99,23 @@ def set_schedule_enabled(schedule_id: int, enabled: bool) -> None:
         entry.save()
     except Exception as e:
         print(f"[beat] toggle failed: {e}")
+
+
+def get_next_run_time(schedule_id: int) -> str | None:
+    """读 redbeat entry 的 due_at, 返回 ISO 字符串; 取不到/未启用返回 None。
+
+    DB 上的 job_schedules.next_run_time 列由 redbeat 自己维护并不可靠,
+    真相源就是 redbeat 自己; API 列表接口在序列化时实时调用本函数填充。
+    """
+    try:
+        from redbeat import RedBeatSchedulerEntry
+        from worker.celery_app import celery_app
+        entry = RedBeatSchedulerEntry.from_key(
+            _entry_key(_entry_name(schedule_id)), app=celery_app,
+        )
+        if not entry.enabled:
+            return None
+        due = entry.due_at  # property: 下次到期时间 (aware datetime) 或 None
+        return due.isoformat() if due else None
+    except Exception:
+        return None
