@@ -46,6 +46,27 @@ async function load() {
   finally { loading.value = false }
 }
 
+function getStatusType(status: string) {
+  if (status === 'success') return 'success'
+  if (status === 'failed') return 'danger'
+  if (status === 'running') return 'info'
+  return 'warning'
+}
+
+function getStatusLabel(status: string) {
+  if (status === 'success') return '成功'
+  if (status === 'failed') return '失败'
+  if (status === 'running') return '运行中'
+  return status
+}
+
+function getTriggerLabel(triggerType: string) {
+  if (triggerType === 'interval') return '间隔'
+  if (triggerType === 'cron') return 'Cron'
+  if (triggerType === 'manual') return '手动'
+  return triggerType
+}
+
 onMounted(load)
 </script>
 
@@ -60,16 +81,16 @@ onMounted(load)
             <el-table-column prop="task_name" label="任务" min-width="140" />
             <el-table-column prop="status" label="状态" width="100">
               <template #default="{ row }">
-                <span :class="['status-dot', 
-                  row.status === 'success' ? 'status-dot--success' : 
-                  row.status === 'failed' ? 'status-dot--danger' : 
-                  row.status === 'running' ? 'status-dot--info status-dot--running' : 'status-dot--warning'
-                ]">
-                  {{ row.status }}
-                </span>
+                <el-tag :type="getStatusType(row.status)" size="small">
+                  {{ getStatusLabel(row.status) }}
+                </el-tag>
               </template>
             </el-table-column>
-            <el-table-column prop="trigger_type" label="触发" width="90" />
+            <el-table-column prop="trigger_type" label="触发" width="100">
+              <template #default="{ row }">
+                <span>{{ getTriggerLabel(row.trigger_type) }}</span>
+              </template>
+            </el-table-column>
             <el-table-column prop="duration" label="耗时(s)" width="100" />
             <el-table-column prop="started_at" label="开始" min-width="180" />
             <el-table-column prop="error" label="错误" min-width="200" show-overflow-tooltip />
@@ -99,9 +120,13 @@ onMounted(load)
           <div class="meta-section">
             <div><span class="lbl">ID:</span> #{{ selectedLog.id }}</div>
             <div><span class="lbl">状态:</span> 
-              <span :class="['status-dot', selectedLog.status === 'success' ? 'status-dot--success' : 'status-dot--danger']">{{ selectedLog.status }}</span>
+              <el-tag :type="getStatusType(selectedLog.status)" size="small">
+                {{ getStatusLabel(selectedLog.status) }}
+              </el-tag>
             </div>
-            <div><span class="lbl">触发:</span> {{ selectedLog.trigger_type }}</div>
+            <div><span class="lbl">触发:</span> 
+              {{ getTriggerLabel(selectedLog.trigger_type) }}
+            </div>
             <div><span class="lbl">耗时:</span> {{ selectedLog.duration ?? '-' }}s</div>
             <div><span class="lbl">时间:</span> {{ selectedLog.started_at }}</div>
           </div>

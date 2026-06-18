@@ -9,10 +9,10 @@
   --border-light: #f1f5f9;
 
   /* Brand */
-  --brand: #1a6355;
-  --brand-hover: #155046;
-  --brand-soft: #d4ede8;
-  --brand-muted: #e8f4f1;
+  --brand: #2563eb;
+  --brand-hover: #1d4ed8;
+  --brand-soft: #dbeafe;
+  --brand-muted: #eff6ff;
 
   /* Text */
   --text-primary: #0f172a;
@@ -46,8 +46,8 @@
   --shadow-xl: 0 20px 25px -5px rgba(15, 23, 42, 0.08), 0 8px 10px -6px rgba(15, 23, 42, 0.05);
 
   /* Semantic shadows (tokenized colors for box-shadows) */
-  --brand-shadow-sm: rgba(26, 99, 85, 0.12);
-  --brand-shadow-md: rgba(26, 99, 85, 0.2);
+  --brand-shadow-sm: rgba(37, 99, 235, 0.12);
+  --brand-shadow-md: rgba(37, 99, 235, 0.2);
   --warning-shadow: rgba(217, 119, 6, 0.12);
   --danger-shadow: rgba(220, 38, 38, 0.12);
   --info-shadow: rgba(37, 99, 235, 0.12);
@@ -59,7 +59,7 @@
   --tag-warning-border: rgba(217, 119, 6, 0.12);
   --tag-danger-border: rgba(220, 38, 38, 0.12);
   --tag-info-border: rgba(37, 99, 235, 0.12);
-  --tag-brand-border: rgba(26, 99, 85, 0.12);
+  --tag-brand-border: rgba(37, 99, 235, 0.12);
 
   /* ── Spacing ─────────────────────────────────────── */
   --space-1: 4px;
@@ -119,7 +119,7 @@
   --el-fill-color-lighter: var(--bg-subtle);
   --el-fill-color-dark: var(--surface-raised);
   --el-fill-color-darker: var(--surface-raised);
-  --el-fill-color-extra-light: rgba(26, 99, 85, 0.03);
+  --el-fill-color-extra-light: rgba(37, 99, 235, 0.03);
   --el-component-size: 36px;
   
   /* Element Plus text colors */

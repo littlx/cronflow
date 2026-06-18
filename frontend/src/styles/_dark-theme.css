@@ -9,10 +9,10 @@ html.dark {
   --border-light: #2d3a4f;
 
   /* Brand */
-  --brand: #2dd4bf;
-  --brand-hover: #14b8a6;
-  --brand-soft: rgba(45, 212, 191, 0.15);
-  --brand-muted: rgba(45, 212, 191, 0.08);
+  --brand: #3b82f6;
+  --brand-hover: #60a5fa;
+  --brand-soft: rgba(59, 130, 246, 0.15);
+  --brand-muted: rgba(59, 130, 246, 0.08);
 
   /* Text */
   --text-primary: #f1f5f9;
@@ -46,8 +46,8 @@ html.dark {
   --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.3);
 
   /* Semantic shadows */
-  --brand-shadow-sm: rgba(45, 212, 191, 0.2);
-  --brand-shadow-md: rgba(45, 212, 191, 0.3);
+  --brand-shadow-sm: rgba(59, 130, 246, 0.2);
+  --brand-shadow-md: rgba(59, 130, 246, 0.3);
   --warning-shadow: rgba(251, 191, 36, 0.2);
   --danger-shadow: rgba(248, 113, 113, 0.2);
   --info-shadow: rgba(96, 165, 250, 0.2);
@@ -59,7 +59,7 @@ html.dark {
   --tag-warning-border: rgba(251, 191, 36, 0.3);
   --tag-danger-border: rgba(248, 113, 113, 0.3);
   --tag-info-border: rgba(96, 165, 250, 0.3);
-  --tag-brand-border: rgba(45, 212, 191, 0.3);
+  --tag-brand-border: rgba(59, 130, 246, 0.3);
 
   /* Element Plus overrides for dark mode */
   --el-color-primary: var(--brand);

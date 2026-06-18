@@ -3,6 +3,7 @@ import { ref, computed, onMounted } from 'vue'
 import client from '@/api/client'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useSocket } from '@/composables/useSocket'
+import { Plus } from '@element-plus/icons-vue'
 
 interface Task {
   ref: string
@@ -81,13 +82,18 @@ async function submit() {
 }
 
 async function toggle(s: Schedule) {
-  try { await client.post(`/schedules/${s.id}/toggle`); load() }
-  catch (e: any) { ElMessage.error(e.message) }
+  try {
+    await client.post(`/schedules/${s.id}/toggle`)
+    ElMessage.success(`${s.enabled ? '已禁用' : '已启用'}调度`)
+    load()
+  } catch (e: any) {
+    ElMessage.error(e.message)
+  }
 }
 
 async function remove(s: Schedule) {
   try {
-    await ElMessageBox.confirm(`删除调度 "${s.name}"?`, '确认', { type: 'warning' })
+    await ElMessageBox.confirm(`确定删除调度 "${s.name}"?`, '确认', { type: 'warning' })
     await client.delete(`/schedules/${s.id}`)
     ElMessage.success('已删除')
     load()
@@ -179,8 +185,8 @@ onMounted(() => {
     <el-skeleton :loading="loading && !schedules.length" animated :rows="8">
       <template #default>
         <div class="panel">
-          <div style="margin-bottom:12px">
-            <el-button type="primary" @click="openCreate">+ 新建调度</el-button>
+          <div style="margin-bottom:16px">
+            <el-button type="primary" :icon="Plus" @click="openCreate">新建调度</el-button>
           </div>
           <el-empty v-if="!schedules.length" description="暂无调度" />
           <el-table v-else :data="schedules" v-loading="loading" size="small">
@@ -205,15 +211,14 @@ onMounted(() => {
                 <span v-else>-</span>
               </template>
             </el-table-column>
-            <el-table-column label="状态" width="90">
+            <el-table-column label="状态" width="100">
               <template #default="{ row }">
-                <el-tag :type="row.enabled?'success':'info'" size="small">{{ row.enabled ? '启用' : '禁用' }}</el-tag>
+                <el-switch :model-value="row.enabled" @change="toggle(row)" />
               </template>
             </el-table-column>
-            <el-table-column label="操作" width="180" fixed="right">
+            <el-table-column label="操作" width="100" fixed="right">
               <template #default="{ row }">
-                <el-button size="small" @click="toggle(row)">{{ row.enabled ? '禁用' : '启用' }}</el-button>
-                <el-button size="small" type="danger" @click="remove(row)">删除</el-button>
+                <el-button size="small" type="danger" link @click="remove(row)">删除</el-button>
               </template>
             </el-table-column>
           </el-table>
@@ -252,9 +257,13 @@ onMounted(() => {
             <el-input v-model="form.trigger_args.month" placeholder="月 *" style="width:80px" />
             <el-input v-model="form.trigger_args.day_of_week" placeholder="周 *" style="width:80px" />
           </div>
-          <div style="font-size:12px;color:var(--brand);font-weight:500;">
-            💡 智能预览: {{ explainCron(form.trigger_args.minute, form.trigger_args.hour, form.trigger_args.day, form.trigger_args.month, form.trigger_args.day_of_week) }}
-          </div>
+          <el-alert
+            :title="`智能预览: ${explainCron(form.trigger_args.minute, form.trigger_args.hour, form.trigger_args.day, form.trigger_args.month, form.trigger_args.day_of_week)}`"
+            type="info"
+            :closable="false"
+            show-icon
+            style="margin-top: 8px;"
+          />
         </el-form-item>
         <el-form-item v-if="selectedTask?.kind==='python' && selectedTask.parameters.length" label="任务参数">
           <div v-for="p in selectedTask.parameters" :key="p.name" style="margin-bottom:8px">

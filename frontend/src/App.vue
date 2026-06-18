@@ -3,7 +3,7 @@ import { onMounted, ref } from 'vue'
 import { RouterLink, RouterView } from 'vue-router'
 import { useSocket } from '@/composables/useSocket'
 import { useStatsStore } from '@/stores/stats'
-import { Monitor, Cpu, Calendar, Document } from '@element-plus/icons-vue'
+import { Monitor, Cpu, Calendar, Document, Sunny, Moon } from '@element-plus/icons-vue'
 
 const socket = useSocket()
 const stats = useStatsStore()
@@ -61,8 +61,9 @@ onMounted(() => {
       </RouterLink>
       <div class="sidebar-footer">
         <button class="theme-toggle" @click="toggleTheme">
-          <span v-if="isDark">☀️ 浅色模式</span>
-          <span v-else>🌙 深色模式</span>
+          <el-icon v-if="isDark"><Sunny /></el-icon>
+          <el-icon v-else><Moon /></el-icon>
+          <span>{{ isDark ? '浅色' : '深色' }}</span>
         </button>
       </div>
     </aside>

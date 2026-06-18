@@ -3,6 +3,7 @@ import { ref, computed, onMounted } from 'vue'
 import client from '@/api/client'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { parseCurl } from '@/utils/curl'
+import { Plus, Upload } from '@element-plus/icons-vue'
 
 interface TaskParam { name: string; type: string; default: any; required: boolean; description?: string }
 interface Task {
@@ -256,16 +257,16 @@ onMounted(load)
                 </el-table-column>
                 <el-table-column label="操作" width="120" fixed="right">
                   <template #default="{ row }">
-                    <el-button size="small" type="primary" @click="trigger(row)">立即执行</el-button>
+                    <el-button size="small" type="primary" link @click="trigger(row)">立即执行</el-button>
                   </template>
                 </el-table-column>
               </el-table>
             </el-tab-pane>
 
             <el-tab-pane label="cURL (表单配置)" name="curl">
-              <div style="margin-bottom:12px;display:flex;gap:8px">
-                <el-button type="primary" @click="openCreate">+ 新建 cURL 任务</el-button>
-                <el-button @click="importVisible = true">📥 从 curl 命令导入</el-button>
+              <div style="margin-bottom:16px;display:flex;gap:8px">
+                <el-button type="primary" :icon="Plus" @click="openCreate">新建 cURL 任务</el-button>
+                <el-button :icon="Upload" @click="importVisible = true">从 cURL 导入</el-button>
               </div>
               <el-empty v-if="!curlTasks.length" description="暂无 cURL 任务" />
               <el-table v-else :data="curlTasks" v-loading="loading" size="small">
@@ -281,10 +282,10 @@ onMounted(load)
                 </el-table-column>
                 <el-table-column label="操作" width="280" fixed="right">
                   <template #default="{ row }">
-                    <el-button size="small" type="primary" @click="trigger(row)">触发</el-button>
-                    <el-button size="small" @click="preview(row)">预览缓存</el-button>
-                    <el-button size="small" @click="openEdit(row)">编辑</el-button>
-                    <el-button size="small" type="danger" @click="remove(row)">删除</el-button>
+                    <el-button size="small" type="primary" link @click="trigger(row)">触发</el-button>
+                    <el-button size="small" type="primary" link @click="preview(row)">预览缓存</el-button>
+                    <el-button size="small" type="primary" link @click="openEdit(row)">编辑</el-button>
+                    <el-button size="small" type="danger" link @click="remove(row)">删除</el-button>
                   </template>
                 </el-table-column>
               </el-table>
@@ -344,9 +345,14 @@ onMounted(load)
         <el-form-item label="Headers"><el-input v-model="form.headers" type="textarea" :rows="2" /></el-form-item>
         <el-form-item label="Body(JSON)"><el-input v-model="form.data" type="textarea" :rows="3" /></el-form-item>
       </el-form>
-      <div style="color:#9aa3b2;font-size:12px;padding:0 12px 8px">
-        💡 创建后请到「定时调度」页给该任务配置触发周期 (interval/cron)，否则不会自动执行。
-      </div>
+      <el-alert
+        title="配置提示"
+        description="创建后请到「定时调度」页为该任务配置触发周期 (间隔/Cron)，否则不会自动执行。"
+        type="info"
+        show-icon
+        :closable="false"
+        style="margin: 0 12px 16px 12px; width: calc(100% - 24px); box-sizing: border-box;"
+      />
       <template #footer>
         <el-button @click="dialogVisible = false">取消</el-button>
         <el-button type="primary" @click="submit">{{ editingId ? '更新' : '创建' }}</el-button>
