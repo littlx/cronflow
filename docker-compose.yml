@@ -1,0 +1,101 @@
+version: "3.8"
+
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: cronflow-v2-db
+    restart: always
+    environment:
+      POSTGRES_DB: cronflow_v2
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5433:5432"   # 5433 避免与 v1 冲突
+    volumes:
+      - pgdata_v2:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d cronflow_v2"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: cronflow-v2-redis
+    restart: always
+    ports:
+      - "6380:6379"   # 6380 避免与 v1 冲突
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build: ./backend
+    container_name: cronflow-v2-backend
+    restart: always
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@db:5432/cronflow_v2
+      - DATABASE_URL_SYNC=postgresql+psycopg2://postgres:postgres@db:5432/cronflow_v2
+      - REDIS_URL=redis://redis:6379/0
+      - AUTH_ENABLED=false
+    volumes:
+      - ./backend:/app
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  worker:
+    build: ./backend
+    container_name: cronflow-v2-worker
+    restart: always
+    command: celery -A worker.celery_app.celery_app worker --loglevel=info
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@db:5432/cronflow_v2
+      - DATABASE_URL_SYNC=postgresql+psycopg2://postgres:postgres@db:5432/cronflow_v2
+      - REDIS_URL=redis://redis:6379/0
+    volumes:
+      - ./backend:/app
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  beat:
+    build: ./backend
+    container_name: cronflow-v2-beat
+    restart: always
+    command: celery -A worker.celery_app.celery_app beat --loglevel=info
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@db:5432/cronflow_v2
+      - DATABASE_URL_SYNC=postgresql+psycopg2://postgres:postgres@db:5432/cronflow_v2
+      - REDIS_URL=redis://redis:6379/0
+    volumes:
+      - ./backend:/app
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  frontend:
+    build: ./frontend
+    container_name: cronflow-v2-frontend
+    restart: always
+    ports:
+      - "5174:5173"   # 5174 避免与 v1 冲突
+    environment:
+      - VITE_API_URL=http://localhost:8000
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    depends_on:
+      - backend
+
+volumes:
+  pgdata_v2:

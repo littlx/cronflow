@@ -1,0 +1,38 @@
+[project]
+name = "cronflow-v2-backend"
+version = "0.1.0"
+description = "CronFlow v2 — 分布式任务调度与 API 数据同步中心 (FastAPI + Celery + redbeat)"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.32.0",
+    "sqlalchemy[asyncio]>=2.0.36",
+    "asyncpg>=0.30.0",
+    "psycopg2-binary>=2.9.10",
+    "alembic>=1.14.0",
+    "pydantic>=2.10.0",
+    "pydantic-settings>=2.6.0",
+    "celery>=5.4.0",
+    "celery-redbeat>=2.2.0",
+    "redis>=5.2.0",
+    "python-socketio>=5.11.0",
+    "httpx>=0.28.0",
+    "psutil>=6.1.0",
+    "structlog>=24.4.0",
+    "prometheus-client>=0.21.0",
+    "python-multipart>=0.0.12",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3.0",
+    "pytest-asyncio>=0.24.0",
+    "httpx>=0.28.0",
+]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["app*", "worker*", "scheduler*", "tasks*"]
