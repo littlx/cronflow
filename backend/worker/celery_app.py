@@ -19,7 +19,7 @@ celery_app = Celery(
     "cronflow",
     broker=settings.redis_url,
     backend=settings.redis_url,
-    include=["worker.python_runner", "worker.curl_runner"],
+    include=["worker.task_runner"],
 )
 
 celery_app.conf.update(

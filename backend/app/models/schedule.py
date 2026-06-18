@@ -1,9 +1,14 @@
-"""定时调度配置表 — DB 为唯一真相源, redbeat 负责到点分发。"""
+"""定时调度表 — task_ref 是字符串:
+- python kind: 形如 'tasks.system_tasks.system_health_check' (注册表 id)
+- curl  kind: 形如 'curl:<uuid>' 或纯 uuid (引用 tasks 表的 id)
+
+调度层不再分叉 task_type, 由 task_ref 解析为对应 kind 后分派。
+"""
 from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from sqlalchemy import Boolean, DateTime, Index, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, Index, Integer, String
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -18,19 +23,15 @@ class JobSchedule(Base):
     __tablename__ = "job_schedules"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    task_id: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    task_ref: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
-    # 'python' | 'curl'
-    task_type: Mapped[str] = mapped_column(String(50), nullable=False, default="python")
     # 'interval' | 'cron'
     trigger_type: Mapped[str] = mapped_column(String(50), nullable=False)
-    # redbeat 调度参数 (interval: {seconds/minutes/...}; cron: {minute/hour/...})
     trigger_args: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
-    # 任务执行参数 (python: 函数 kwargs; curl: 忽略)
+    # python 任务的 kwargs; curl 不用 (handler_config 已含全部参数)
     task_args: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
-    # redbeat 中的 entry key, 用于动态增删
     redbeat_key: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     next_run_time: Mapped[datetime | None] = mapped_column(
@@ -44,16 +45,14 @@ class JobSchedule(Base):
     )
 
     __table_args__ = (
-        # 调度器查"到期且启用"的任务
         Index("ix_schedules_enabled_next_run", "enabled", "next_run_time"),
     )
 
     def to_dict(self) -> dict:
         return {
             "id": self.id,
-            "task_id": self.task_id,
+            "task_ref": self.task_ref,
             "name": self.name,
-            "task_type": self.task_type,
             "trigger_type": self.trigger_type,
             "trigger_args": self.trigger_args or {},
             "task_args": self.task_args or {},

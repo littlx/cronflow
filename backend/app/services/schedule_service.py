@@ -1,4 +1,7 @@
-"""调度业务逻辑层 — 协调 DB 写入 + redbeat entry 同步 + 事件推送。"""
+"""调度业务逻辑层 — 协调 DB 写入 + redbeat entry 同步 + 事件推送。
+
+不再区分 python/curl 任务。schedule.task_ref 是统一字符串引用。
+"""
 from __future__ import annotations
 
 from typing import Any
@@ -17,9 +20,8 @@ async def list_schedules(db: AsyncSession) -> list[JobSchedule]:
 
 async def create_schedule(db: AsyncSession, payload: ScheduleCreate) -> JobSchedule:
     sched = JobSchedule(
-        task_id=payload.task_id,
+        task_ref=payload.task_ref,
         name=payload.name,
-        task_type=payload.task_type,
         trigger_type=payload.trigger_type,
         trigger_args=payload.trigger_args,
         task_args=payload.task_args,
@@ -29,15 +31,12 @@ async def create_schedule(db: AsyncSession, payload: ScheduleCreate) -> JobSched
     await db.commit()
     await db.refresh(sched)
 
-    # 同步 redbeat
     if payload.enabled:
         try:
             from scheduler.beat import upsert_schedule_entry
             key = upsert_schedule_entry(
                 schedule_id=sched.id,
-                task_id=sched.task_id,
-                name=sched.name,
-                task_type=sched.task_type,
+                task_ref=sched.task_ref,
                 trigger_type=sched.trigger_type,
                 trigger_args=sched.trigger_args,
                 task_args=sched.task_args,
@@ -58,34 +57,31 @@ async def update_schedule(db: AsyncSession, schedule_id: int, payload: ScheduleU
     if not sched:
         return None
 
-    changed_schedule = False
+    changed = False
     if payload.name is not None:
         sched.name = payload.name
     if payload.trigger_type is not None:
         sched.trigger_type = payload.trigger_type
-        changed_schedule = True
+        changed = True
     if payload.trigger_args is not None:
         sched.trigger_args = payload.trigger_args
-        changed_schedule = True
+        changed = True
     if payload.task_args is not None:
         sched.task_args = payload.task_args
     if payload.enabled is not None:
         sched.enabled = payload.enabled
-        changed_schedule = True
+        changed = True
 
     await db.commit()
     await db.refresh(sched)
 
-    # 同步 redbeat (重建 entry)
-    if changed_schedule:
+    if changed:
         try:
-            from scheduler.beat import upsert_schedule_entry, delete_schedule_entry
+            from scheduler.beat import delete_schedule_entry, upsert_schedule_entry
             if sched.enabled:
                 key = upsert_schedule_entry(
                     schedule_id=sched.id,
-                    task_id=sched.task_id,
-                    name=sched.name,
-                    task_type=sched.task_type,
+                    task_ref=sched.task_ref,
                     trigger_type=sched.trigger_type,
                     trigger_args=sched.trigger_args,
                     task_args=sched.task_args,
@@ -127,12 +123,15 @@ async def toggle_schedule(db: AsyncSession, schedule_id: int) -> JobSchedule | N
     await db.commit()
     await db.refresh(sched)
     try:
-        from scheduler.beat import upsert_schedule_entry, delete_schedule_entry
+        from scheduler.beat import delete_schedule_entry, upsert_schedule_entry
         if sched.enabled:
             key = upsert_schedule_entry(
-                schedule_id=sched.id, task_id=sched.task_id, name=sched.name,
-                task_type=sched.task_type, trigger_type=sched.trigger_type,
-                trigger_args=sched.trigger_args, task_args=sched.task_args, enabled=True,
+                schedule_id=sched.id,
+                task_ref=sched.task_ref,
+                trigger_type=sched.trigger_type,
+                trigger_args=sched.trigger_args,
+                task_args=sched.task_args,
+                enabled=True,
             )
             sched.redbeat_key = key
         else:
@@ -147,7 +146,6 @@ async def toggle_schedule(db: AsyncSession, schedule_id: int) -> JobSchedule | N
 
 
 def _notify_changed() -> None:
-    """通知前端调度已变更 (走 Redis message_queue)。"""
     try:
         from app.core.eventbus_sync import emit_schedule_changed
         emit_schedule_changed()

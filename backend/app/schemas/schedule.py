@@ -1,16 +1,14 @@
 """调度相关 Pydantic schema。"""
 from __future__ import annotations
 
-from datetime import datetime
 from typing import Any
 
 from pydantic import BaseModel
 
 
 class ScheduleBase(BaseModel):
-    task_id: str
+    task_ref: str
     name: str
-    task_type: str = "python"          # python | curl
     trigger_type: str                   # interval | cron
     trigger_args: dict[str, Any] = {}
     task_args: dict[str, Any] = {}
@@ -30,9 +28,8 @@ class ScheduleUpdate(BaseModel):
 
 class ScheduleOut(BaseModel):
     id: int
-    task_id: str
+    task_ref: str
     name: str
-    task_type: str
     trigger_type: str
     trigger_args: dict[str, Any]
     task_args: dict[str, Any]

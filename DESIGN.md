@@ -7,21 +7,25 @@
 
 ## 一、项目核心需求
 
-CronFlow 是一个**分布式任务调度 + API 数据同步中心**，解决四件事：
+CronFlow 是一个**分布式任务调度中心**：所有"可调度的事"都是 **Task**（任务），按 **kind** 区分处理器：
 
-| 能力 | 本质 |
+| Kind | 来源 | 处理器 |
+|---|---|---|
+| `python` | 开发期 `@register_task` 装饰函数（只读，不入库） | 调用注册函数 |
+| `curl` | 运行期表单创建（入库 `tasks` 表） | httpx 抓取 → JSONB 缓存 |
+| 未来 | shell / sql / webhook / ... | 扩展 handler 即可，不改调度层 |
+
+调度层 **统一**：一个 `schedules` 表，每条调度引用一个 task（不论 kind），用 redbeat 在 Redis 上无状态分发。执行层一个统一 `worker.run_task`，按 kind 分派到对应 handler。
+
+四件事的统一表达：
+| 能力 | 实现 |
 |---|---|
-| **函数即任务** | 用 `@register_task` 装饰 Python 函数，自动做参数类型自省，前端据此动态渲染表单 |
-| **定时 + 即时调度** | `interval` / `cron` 两种触发；调度器到点 → 丢给 Celery 队列 → worker 异步执行 |
-| **cURL/API 数据同步** | 导入 cURL 注册成轮询任务，抓回 JSON 写入 PostgreSQL 的 `JSONB` 缓存表，前端可查询预览 |
-| **实时监控看板** | 4 张监控卡片 + 日志流，通过 SocketIO + Redis message queue 实时推送 |
+| **函数即任务** | `@register_task` + 参数自省 → 注册表（python kind） |
+| **API 数据同步** | 表单建 curl task → handler_config 存 url/method/headers/... |
+| **定时调度** | `schedules` 表 + redbeat → `worker.run_task(task_ref, ...)` 按 kind 分派 |
+| **实时监控** | EventBus 单一出口，worker 完成时 emit `new_log`/`stats_update` |
 
-三个进程角色分工：
-- `app` —— API 网关 + SocketIO 服务端
-- `scheduler_daemon` —— 调度仲裁者，每 5 秒全量扫表与内存 APScheduler 同步，到点 send_task 给 Celery
-- `tasks_worker` —— Celery worker，真正执行任务、写日志、回推 SocketIO
-
-四张表：`job_schedules`（调度配置）、`task_logs`（执行日志）、`curl_tasks`（cURL 同步任务）、`crawled_data_cache`（JSONB 抓取缓存）。
+数据模型四张表：`tasks`（curl 任务定义；python 不入库）、`schedules`（调度，引用 task_ref 字符串）、`task_logs`（执行日志）、`crawled_data_cache`（curl handler 的 JSONB 缓存输出）。
 
 ---
 
@@ -59,39 +63,40 @@ CronFlow 是一个**分布式任务调度 + API 数据同步中心**，解决四
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │  Frontend  (Vue3 + Pinia + Router + Element Plus + TS)       │
-│  Dashboard / Schedules / TaskRegistry / DataSync / Logs      │
+│  Dashboard / Tasks(python+curl) / Schedules / Logs / Cache   │
 └───────────────┬─────────────────────────────┬────────────────┘
         HTTP/REST (FastAPI)             SocketIO (EventBus)
 ┌───────────────▼─────────────────────────────▼────────────────┐
 │                    API Gateway (FastAPI)                      │
 │  routers/  ·  schemas/  ·  services/  ·  auth/  ·  deps/      │
 └──────┬─────────────────────────────────────┬─────────────────┘
-       │                                     │ (dispatch)
-       │ (写调度配置)                          ▼
+       │                                     │ (dispatch run_task)
+       │ (写 task / schedule)                 ▼
        ▼                          ┌──────────────────────────────┐
 ┌─────────────────┐               │  Scheduler Layer (无状态)     │
 │  PostgreSQL     │◄──────────────│  · redbeat 周期 tick          │
-│  (唯一真相源)    │               │  · Redis SET NX 选主          │
-│  schedules      │               │  · 到点 → send_task 给 Celery │
+│  tasks (curl)   │               │  · Redis SET NX 选主          │
+│  schedules      │               │  · 到点 → send_task run_task   │
 │  task_logs      │               │  · 多实例水平扩展             │
-│  curl_tasks     │               └──────────────┬───────────────┘
-│  data_cache     │                              │
-└─────────────────┘                              ▼
-       ▲                              ┌──────────────────────────────┐
-       │ 写日志/缓存                   │  Celery Workers (执行层)      │
-       │                              │  · 重试/退避/超时/限流/幂等   │
-       │                              │  · python task / curl task   │
-       │                              │  · 完成后 → EventBus.emit    │
-       │                              └──────────────┬───────────────┘
-       │                                             │
-       └──────────── Redis ──────────────────────────┘
-         (broker + result + redbeat + pub/sub + 锁)
+│  data_cache     │               └──────────────┬───────────────┘
+└─────────────────┘                              │
+       ▲                                         ▼
+       │ 写日志/缓存       ┌──────────────────────────────────────┐
+       │                  │  Celery Worker: worker.run_task       │
+       │                  │  解析 task_ref → kind → 分派 handler  │
+       │                  │  ├─ python_handler (调注册表函数)      │
+       │                  │  └─ curl_handler   (httpx → 缓存)     │
+       │                  │  统一: 重试/超时/幂等 + emit 事件     │
+       │                  └──────────────┬───────────────────────┘
+       │                                 │
+       └────────────── Redis ────────────┘
+         (broker + result + redbeat + RedisManager 扇出 + 锁)
 ```
 
-**核心改动：调度层无状态化。**
-- `job_schedules` 加 `next_run_time timestamptz` 索引；
-- 调度器 N 实例跑同一 tick，redbeat leader election 只让一个实例发 tick；
-- 到期任务 `send_task` 给 Celery 后立即更新 `next_run_time`。无单点，实例随便挂。
+**核心设计**：
+1. **统一任务抽象**：python 任务来自 `@register_task`（启动期注册表），curl 任务来自表单（入 `tasks` 表）。`schedules.task_ref` 是字符串 ref，能在两处查找。
+2. **调度层无状态化**：redbeat schedule 存 Redis，多 beat 实例 leader election，DB 是 schedule 配置真相源。
+3. **执行层一个入口**：`worker.run_task(task_ref, ...)` 按 kind 分派到 handler，handler 共享日志/重试/emit 框架。
 
 ---
 
@@ -101,27 +106,26 @@ CronFlow 是一个**分布式任务调度 + API 数据同步中心**，解决四
 backend/
 ├── app/main.py                 # FastAPI 入口
 ├── core/                       # 横切关注点
-│   ├── config.py               # pydantic-settings
-│   ├── db.py                   # async SQLAlchemy session
-│   ├── redis.py
-│   ├── security.py             # JWT/RBAC
-│   └── eventbus.py             # 唯一 SocketIO emit 封装
-├── models/                     # ORM 模型（JSONB / timestamptz）
-├── schemas/                    # Pydantic 入参/出参
-├── routers/                    # tasks / schedules / logs / curl / stats / auth
-├── services/                   # 业务逻辑
-├── registry/                   # @register_task + 参数自省（亮点保留）
-│   ├── decorator.py
-│   ├── introspect.py
-│   └── discover.py
-├── scheduler/                  # 无状态调度层
-│   ├── beat.py                 # redbeat 配置
-│   └── dispatch.py
-├── worker/                     # Celery tasks
+│   ├── config.py / db.py / db_sync.py / redis.py
+│   ├── eventbus.py / eventbus_sync.py  # 单一 emit (RedisManager 跨进程扇出)
+│   ├── security.py             # 鉴权接口（首版放行）
+│   └── logging.py / metrics.py
+├── models/                     # ORM (JSONB / timestamptz)
+│   ├── task.py                 # tasks 表 (kind=curl 入库; python 不入库)
+│   ├── schedule.py             # schedules 表 (task_ref 字符串)
+│   ├── task_log.py / cache.py
+├── schemas/
+├── routers/                    # tasks / schedules / logs / cache / stats / health / metrics
+├── services/                   # task_service / schedule_service / stats
+├── registry/                   # @register_task + 参数自省 (python kind 来源)
+├── scheduler/beat.py           # redbeat entry 增删 helper
+├── worker/
 │   ├── celery_app.py
-│   ├── python_runner.py        # 执行注册函数 + 日志 + 重试
-│   └── curl_runner.py          # 抓取 + JSONB 缓存
-└── tasks/                      # 业务任务（用户写的）
+│   ├── task_runner.py          # 唯一执行入口 worker.run_task
+│   └── handlers/
+│       ├── python_handler.py   # 调注册表函数
+│       └── curl_handler.py     # httpx → JSONB 缓存
+└── tasks/                      # 用户业务 python 任务
 ```
 
 ---

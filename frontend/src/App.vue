@@ -20,9 +20,8 @@ onMounted(() => {
     <aside class="app-sidebar">
       <div class="brand">CronFlow v2</div>
       <RouterLink class="nav-item" to="/dashboard">监控中心</RouterLink>
-      <RouterLink class="nav-item" to="/tasks">任务注册</RouterLink>
+      <RouterLink class="nav-item" to="/tasks">任务</RouterLink>
       <RouterLink class="nav-item" to="/schedules">定时调度</RouterLink>
-      <RouterLink class="nav-item" to="/data-sync">数据同步</RouterLink>
       <RouterLink class="nav-item" to="/logs">执行日志</RouterLink>
     </aside>
     <main class="app-main">

@@ -15,7 +15,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.core.eventbus import sio_app
 from app.core.logging import setup_logging
-from app.routers import health, tasks, logs, stats, schedules, curl, metrics
+from app.routers import cache, health, logs, metrics, schedules, stats, tasks
 
 
 @asynccontextmanager
@@ -48,7 +48,7 @@ def create_app() -> FastAPI:
     app.include_router(logs.router)
     app.include_router(stats.router)
     app.include_router(schedules.router)
-    app.include_router(curl.router)
+    app.include_router(cache.router)
     app.include_router(metrics.router)
 
     # SocketIO 挂载到根路径, 与 FastAPI 共享 ASGI
