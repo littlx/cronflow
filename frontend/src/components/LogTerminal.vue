@@ -117,7 +117,7 @@ async function copy() {
   flex-shrink: 0;
   background: #666;
 }
-.status-dot.success { background: #0070f3; box-shadow: 0 0 0 3px rgba(0, 112, 243, 0.18); }
+.status-dot.success { background: #0a7d27; box-shadow: 0 0 0 3px rgba(10, 125, 39, 0.18); }
 .status-dot.failed  { background: #e00; box-shadow: 0 0 0 3px rgba(238, 0, 0, 0.18); }
 .status-dot.running { background: #f5a623; box-shadow: 0 0 0 3px rgba(245, 166, 35, 0.18); animation: dot-pulse 1.4s ease-in-out infinite; }
 @keyframes dot-pulse {

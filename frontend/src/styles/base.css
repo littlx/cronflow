@@ -23,9 +23,15 @@
   --accents-7: #333;
   --accents-8: #111;
 
-  /* ----- Accents (几何色, 平面单色) ----- */
-  --geist-success:  #0070f3;   /* 与 Vercel "blue" 同义 */
-  --geist-success-bg: #f0f7ff;
+  /* ----- Accents (几何色, 平面单色) -----
+     语义保持自洽: success/failed/warning/error 在 tag / icon / status-dot
+     处使用同一色, 不与 Vercel blue 混淆。Vercel blue 单独作为 --blue
+     用于 link / focus / 中性强调。 */
+  --geist-blue:     #0070f3;
+  --geist-blue-bg:  #f0f7ff;
+
+  --geist-success:  #0a7d27;
+  --geist-success-bg: #edfaf0;
   --geist-warning:  #f5a623;
   --geist-warning-bg: #fff8eb;
   --geist-error:    #e00;
@@ -437,13 +443,13 @@ code, pre, kbd, samp {
   border-color: var(--border) !important;
 }
 .el-tag--primary {
-  background: var(--geist-success-bg) !important;
-  color: var(--geist-success) !important;
+  background: var(--geist-blue-bg) !important;
+  color: var(--geist-blue) !important;
   border-color: rgba(0, 112, 243, 0.2) !important;
 }
 .el-tag--success {
-  background: #edfaf0 !important;
-  color: #0a7d27 !important;
+  background: var(--geist-success-bg) !important;
+  color: var(--geist-success) !important;
   border-color: rgba(10, 125, 39, 0.2) !important;
 }
 .el-tag--warning {

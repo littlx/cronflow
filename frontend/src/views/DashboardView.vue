@@ -7,7 +7,7 @@
 -->
 <script setup lang="ts">
 import { ref } from 'vue'
-import { Calendar, CircleCheck, Odometer, Cpu } from '@element-plus/icons-vue'
+import { Calendar, CircleCheck, Clock, Odometer, Cpu } from '@element-plus/icons-vue'
 import { useStatsStore } from '@/stores/stats'
 import MetricCard from '@/components/MetricCard.vue'
 import StatusTag from '@/components/StatusTag.vue'

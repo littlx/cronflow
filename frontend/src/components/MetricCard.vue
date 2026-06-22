@@ -61,10 +61,15 @@ defineProps<{
   color: var(--muted-soft);
   flex-shrink: 0;
 }
+/* 强制覆盖 Element Plus icon 内部 SVG 颜色 (currentColor 兜底) */
+.metric-icon :deep(svg),
+.metric-icon :deep(svg path) {
+  fill: currentColor;
+}
 .metric-icon.success { color: var(--geist-success); }
 .metric-icon.warning { color: var(--geist-warning); }
 .metric-icon.danger  { color: var(--geist-error); }
-.metric-icon.info    { color: var(--muted); }
+.metric-icon.info    { color: var(--geist-blue); }
 .metric-icon.brand   { color: var(--fg); }
 
 .metric-value {
