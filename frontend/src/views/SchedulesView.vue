@@ -1,103 +1,96 @@
+<!--
+  SchedulesView — 定时调度管理
+  - 列表 (含 next_run_time 倒计时)
+  - 新建 (interval / cron, 用 TaskPicker + ParamForm + CronInput)
+  - 启停 / 删除
+  - schedule_changed socket 事件 → 局部刷新
+-->
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
-import client from '@/api/client'
+import { computed, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { useSocket } from '@/composables/useSocket'
 import { Plus } from '@element-plus/icons-vue'
+import { useSchedulesStore } from '@/stores/schedules'
+import { useTasksStore } from '@/stores/tasks'
+import { useSocketListener } from '@/composables/useSocket'
+import TaskPicker from '@/components/TaskPicker.vue'
+import ParamForm from '@/components/ParamForm.vue'
+import CronInput from '@/components/CronInput.vue'
+import { formatDateTime, timeUntil } from '@/utils/format'
+import type { Schedule } from '@/api/types'
 
-interface Task {
-  ref: string
-  kind: string
-  name: string
-  parameters: { name: string; type: string; default: any; required: boolean }[]
-}
+const schedules = useSchedulesStore()
+const tasks = useTasksStore()
 
-interface Schedule {
-  id: number
-  task_ref: string
-  name: string
-  trigger_type: string
-  trigger_args: any
-  task_args: any
-  enabled: boolean
-  next_run_time: string | null
-}
-
-const schedules = ref<Schedule[]>([])
-const tasks = ref<Task[]>([])
-const loading = ref(false)
+// 新建表单
 const dialogVisible = ref(false)
-
-const form = ref<{
-  task_ref: string
-  name: string
-  trigger_type: string
-  trigger_args: Record<string, any>
-  task_args: Record<string, any>
-  enabled: boolean
-}>({
+const form = ref({
   task_ref: '',
   name: '',
-  trigger_type: 'interval',
-  trigger_args: { minutes: 5 },
-  task_args: {},
+  trigger_type: 'interval' as 'interval' | 'cron',
+  interval_minutes: 5,
+  trigger_args_cron: { minute: '*/5', hour: '*', day: '*', month: '*', day_of_week: '*' } as Record<string, any>,
+  task_args: {} as Record<string, any>,
   enabled: true,
 })
 
-const socket = useSocket()
-
-const selectedTask = computed(() => tasks.value.find((t) => t.ref === form.value.task_ref))
-
-function kindOf(ref: string): string {
-  return tasks.value.find((t) => t.ref === ref)?.kind ?? '?'
-}
-
-function nameOf(ref: string): string {
-  return tasks.value.find((t) => t.ref === ref)?.name ?? ref
-}
-
-async function load() {
-  loading.value = true
-  try {
-    const [s, t] = await Promise.all([client.get('/schedules'), client.get('/tasks')])
-    schedules.value = s.data
-    tasks.value = t.data
-  } finally { loading.value = false }
-}
+const selectedTask = computed(() => tasks.byRef(form.value.task_ref))
 
 function openCreate() {
-  form.value = { task_ref: '', name: '', trigger_type: 'interval', trigger_args: { minutes: 5 }, task_args: {}, enabled: true }
+  form.value = {
+    task_ref: '', name: '',
+    trigger_type: 'interval',
+    interval_minutes: 5,
+    trigger_args_cron: { minute: '*/5', hour: '*', day: '*', month: '*', day_of_week: '*' },
+    task_args: {},
+    enabled: true,
+  }
   dialogVisible.value = true
 }
 
 async function submit() {
   if (!form.value.task_ref) { ElMessage.error('请选择任务'); return }
   if (!form.value.name) form.value.name = selectedTask.value?.name ?? form.value.task_ref
+
+  const trigger_args = form.value.trigger_type === 'interval'
+    ? { minutes: form.value.interval_minutes }
+    : form.value.trigger_args_cron
+
   try {
-    await client.post('/schedules', form.value)
+    await schedules.create({
+      task_ref: form.value.task_ref,
+      name: form.value.name,
+      trigger_type: form.value.trigger_type,
+      trigger_args,
+      task_args: form.value.task_args,
+      enabled: form.value.enabled,
+    })
     ElMessage.success('已创建调度')
     dialogVisible.value = false
-    load()
-  } catch (e: any) { ElMessage.error(e.message) }
-}
-
-async function toggle(s: Schedule) {
-  try {
-    await client.post(`/schedules/${s.id}/toggle`)
-    ElMessage.success(`${s.enabled ? '已禁用' : '已启用'}调度`)
-    load()
   } catch (e: any) {
     ElMessage.error(e.message)
   }
 }
 
+async function toggle(s: Schedule) {
+  try {
+    await schedules.toggle(s.id)
+    ElMessage.success(`${s.enabled ? '已禁用' : '已启用'}调度`)
+  } catch (e: any) { ElMessage.error(e.message) }
+}
+
 async function remove(s: Schedule) {
   try {
     await ElMessageBox.confirm(`确定删除调度 "${s.name}"?`, '确认', { type: 'warning' })
-    await client.delete(`/schedules/${s.id}`)
+    await schedules.remove(s.id)
     ElMessage.success('已删除')
-    load()
   } catch { /* cancel */ }
+}
+
+function kindOf(ref: string): string {
+  return tasks.byRef(ref)?.kind ?? '?'
+}
+function nameOf(ref: string): string {
+  return tasks.byRef(ref)?.name ?? ref
 }
 
 function fmtTrigger(s: Schedule): string {
@@ -105,7 +98,7 @@ function fmtTrigger(s: Schedule): string {
     for (const k of ['seconds', 'minutes', 'hours', 'days']) {
       if (s.trigger_args[k]) {
         const units: Record<string, string> = { seconds: '秒', minutes: '分钟', hours: '小时', days: '天' }
-        return `每 ${s.trigger_args[k]} ${units[k] || k}`
+        return `每 ${s.trigger_args[k]} ${units[k]}`
       }
     }
     return 'interval'
@@ -114,91 +107,27 @@ function fmtTrigger(s: Schedule): string {
   return `cron: ${a.minute || '*'} ${a.hour || '*'} ${a.day || '*'} ${a.month || '*'} ${a.day_of_week || '*'}`
 }
 
-function explainCron(m: string, h: string, d: string, mo: string, w: string): string {
-  m = m || '*'
-  h = h || '*'
-  d = d || '*'
-  mo = mo || '*'
-  w = w || '*'
+// 实时推送: 调度变更后回拉一次
+useSocketListener('schedule_changed', () => { schedules.load() })
 
-  if (m === '*' && h === '*' && d === '*' && mo === '*' && w === '*') return '每分钟'
-  
-  if (m.startsWith('*/') && h === '*' && d === '*' && mo === '*' && w === '*') {
-    return `每 ${m.slice(2)} 分钟`
-  }
-  if (m === '0' && h.startsWith('*/') && d === '*' && mo === '*' && w === '*') {
-    return `每 ${h.slice(2)} 小时`
-  }
-
-  let timeStr = ''
-  if (m === '*' && h === '*') timeStr = '每小时的每分钟'
-  else if (m !== '*' && h === '*') timeStr = `每小时的第 ${m} 分钟`
-  else if (m === '*' && h !== '*') timeStr = `每天的 ${h} 时每分钟`
-  else {
-    timeStr = `${h.padStart(2, '0')}:${m.padStart(2, '0')}`
-  }
-
-  let dateStr = ''
-  if (d === '*' && mo === '*' && w === '*') dateStr = '每天'
-  else if (d !== '*' && mo === '*' && w === '*') dateStr = `每月第 ${d} 号`
-  else if (d === '*' && mo === '*' && w !== '*') {
-    const weeks: Record<string, string> = {
-      '0': '周日', '7': '周日', '1': '周一', '2': '周二', '3': '周三', '4': '周四', '5': '周五', '6': '周六', '*': '每天'
-    }
-    dateStr = `每周 ${w.split(',').map(x => weeks[x] || x).join('、')}`
-  } else if (d !== '*' && mo !== '*') {
-    dateStr = `每年 ${mo}月${d}号`
-  } else {
-    dateStr = `每年 ${mo}月每天`
-  }
-
-  return `${dateStr} ${timeStr} 执行`
-}
-
-function timeUntil(timeStr: string | null): string {
-  if (!timeStr) return '-'
-  const target = new Date(timeStr).getTime()
-  const now = Date.now()
-  const diff = target - now
-  if (diff <= 0) return '即将执行'
-  
-  const secs = Math.floor(diff / 1000)
-  const mins = Math.floor(secs / 60)
-  const hours = Math.floor(mins / 60)
-  const days = Math.floor(hours / 24)
-
-  if (days > 0) return `${days}天后`
-  if (hours > 0) return `${hours}小时后`
-  if (mins > 0) return `${mins}分钟后`
-  return `${secs}秒后`
-}
-
-onMounted(() => {
-  load()
-  // schedule_changed 携带 {action, id}: deleted 直接局部移除, 其他动作回拉一次
-  socket.on('schedule_changed', (payload: any) => {
-    if (payload && payload.action === 'deleted' && payload.id != null) {
-      schedules.value = schedules.value.filter((s) => s.id !== payload.id)
-      return
-    }
-    load()
-  })
+onMounted(async () => {
+  await Promise.all([schedules.load(), tasks.load()])
 })
 </script>
 
 <template>
   <div class="page-container">
     <h2 class="page-title">定时调度</h2>
-    <el-skeleton :loading="loading && !schedules.length" animated :rows="8">
+    <el-skeleton :loading="schedules.loading && !schedules.items.length" animated :rows="6">
       <template #default>
         <div class="panel">
-          <div style="margin-bottom:16px">
+          <div style="margin-bottom:14px">
             <el-button type="primary" :icon="Plus" @click="openCreate">新建调度</el-button>
           </div>
-          <el-empty v-if="!schedules.length" description="暂无调度" />
-          <el-table v-else :data="schedules" v-loading="loading" size="small">
-            <el-table-column prop="name" label="名称" min-width="120" />
-            <el-table-column label="任务" min-width="220">
+          <el-empty v-if="!schedules.items.length" description="暂无调度" />
+          <el-table v-else :data="schedules.items" v-loading="schedules.loading" size="small">
+            <el-table-column prop="name" label="名称" min-width="140" />
+            <el-table-column label="任务" min-width="240">
               <template #default="{ row }">
                 <el-tag size="small" :type="kindOf(row.task_ref)==='python'?'primary':'success'" style="margin-right:6px">
                   {{ kindOf(row.task_ref) }}
@@ -209,12 +138,12 @@ onMounted(() => {
             <el-table-column label="触发" min-width="180">
               <template #default="{ row }">{{ fmtTrigger(row) }}</template>
             </el-table-column>
-            <el-table-column prop="next_run_time" label="下次运行" min-width="180">
+            <el-table-column label="下次运行" min-width="200">
               <template #default="{ row }">
-                <span v-if="row.next_run_time">
-                  <div>{{ row.next_run_time }}</div>
-                  <small style="color: var(--text-muted)">({{ timeUntil(row.next_run_time) }})</small>
-                </span>
+                <template v-if="row.next_run_time">
+                  <div>{{ formatDateTime(row.next_run_time) }}</div>
+                  <small style="color:var(--el-text-color-secondary)">({{ timeUntil(row.next_run_time) }})</small>
+                </template>
                 <span v-else>-</span>
               </template>
             </el-table-column>
@@ -233,20 +162,12 @@ onMounted(() => {
       </template>
     </el-skeleton>
 
-    <el-dialog v-model="dialogVisible" title="新建调度" width="600px">
+    <el-dialog v-model="dialogVisible" title="新建调度" width="640px" destroy-on-close>
       <el-form label-width="100px">
-        <el-form-item label="任务">
-          <el-select v-model="form.task_ref" filterable placeholder="选择任意 python / curl 任务" style="width:100%"
-                     @change="form.name = nameOf(form.task_ref)">
-            <el-option-group label="Python (代码注册)">
-              <el-option v-for="t in tasks.filter(x=>x.kind==='python')" :key="t.ref" :label="t.name" :value="t.ref" />
-            </el-option-group>
-            <el-option-group label="cURL (表单配置)">
-              <el-option v-for="t in tasks.filter(x=>x.kind==='curl')" :key="t.ref" :label="t.name" :value="t.ref" />
-            </el-option-group>
-          </el-select>
+        <el-form-item label="任务" required>
+          <TaskPicker v-model="form.task_ref" @update:model-value="form.name = nameOf(form.task_ref)" />
         </el-form-item>
-        <el-form-item label="名称"><el-input v-model="form.name" /></el-form-item>
+        <el-form-item label="名称"><el-input v-model="form.name" placeholder="不填则用任务名" /></el-form-item>
         <el-form-item label="触发类型">
           <el-radio-group v-model="form.trigger_type">
             <el-radio-button value="interval">间隔</el-radio-button>
@@ -254,28 +175,16 @@ onMounted(() => {
           </el-radio-group>
         </el-form-item>
         <el-form-item v-if="form.trigger_type === 'interval'" label="间隔">
-          <el-input-number v-model="form.trigger_args.minutes" :min="1" /> 分钟
+          <el-input-number v-model="form.interval_minutes" :min="1" /> 分钟
         </el-form-item>
-        <el-form-item v-else label="Cron 参数">
-          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px">
-            <el-input v-model="form.trigger_args.minute" placeholder="分 *" style="width:80px" />
-            <el-input v-model="form.trigger_args.hour" placeholder="时 *" style="width:80px" />
-            <el-input v-model="form.trigger_args.day" placeholder="日 *" style="width:80px" />
-            <el-input v-model="form.trigger_args.month" placeholder="月 *" style="width:80px" />
-            <el-input v-model="form.trigger_args.day_of_week" placeholder="周 *" style="width:80px" />
-          </div>
-          <el-alert
-            :title="`智能预览: ${explainCron(form.trigger_args.minute, form.trigger_args.hour, form.trigger_args.day, form.trigger_args.month, form.trigger_args.day_of_week)}`"
-            type="info"
-            :closable="false"
-            show-icon
-            style="margin-top: 8px;"
-          />
+        <el-form-item v-else label="Cron 表达式">
+          <CronInput v-model="form.trigger_args_cron" />
         </el-form-item>
-        <el-form-item v-if="selectedTask?.kind==='python' && selectedTask.parameters.length" label="任务参数">
-          <div v-for="p in selectedTask.parameters" :key="p.name" style="margin-bottom:8px">
-            <el-input v-model="form.task_args[p.name]" :placeholder="`${p.name} (${p.type})${p.required?' *必填':''}`" />
-          </div>
+        <el-form-item
+          v-if="selectedTask?.kind === 'python' && selectedTask.parameters.length"
+          label="任务参数"
+        >
+          <ParamForm :parameters="selectedTask.parameters" v-model="form.task_args" />
         </el-form-item>
         <el-form-item label="启用"><el-switch v-model="form.enabled" /></el-form-item>
       </el-form>

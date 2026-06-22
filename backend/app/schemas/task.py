@@ -3,28 +3,31 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class TaskParameter(BaseModel):
+    # 避免 'schema' 字段名与 BaseModel.schema 方法冲突: 内部用 json_schema, 输出别名 schema
+    model_config = ConfigDict(populate_by_name=True)
+
     name: str
     type: str
     default: Any = None
     required: bool
     description: str = ""
+    # Pydantic BaseModel 参数的完整 JSON Schema (前端拿来精细渲染表单)
+    json_schema: dict[str, Any] | None = Field(default=None, alias="schema")
+    model_name: str | None = None
 
 
 class TaskOut(BaseModel):
     """统一任务视图: python (注册表) + curl (DB)。"""
-    ref: str                              # python: 'tasks.xxx.foo'; curl: 'curl:<uuid>'
-    kind: str                             # 'python' | 'curl'
+    ref: str
+    kind: str
     name: str
     description: str = ""
     handler_config: dict[str, Any] = {}
     parameters: list[TaskParameter] = []
-    # 任务级路由/限流, 由 register_task 或 curl handler_config 提供
-    queue: str | None = None
-    priority: int | None = None
     # curl-only:
     id: str | None = None
     created_at: str | None = None
@@ -37,12 +40,10 @@ class CurlHandlerConfig(BaseModel):
     url: str
     method: str = "GET"
     headers: dict[str, str] = {}
-    data: dict[str, Any] | str | None = None   # dict (JSON body) | str (form/raw) | None
+    data: dict[str, Any] | str | None = None
     handler_type: str = "PURE_JSON"          # PURE_JSON | NESTED_DATA | RAW_RESPONSE
     target_collection: str
-    # 任务级路由/限流: 直接写入 handler_config, ref_resolver 提取
-    queue: str | None = None
-    priority: int | None = None
+    timeout: int | None = None               # 秒, None 走默认值
 
 
 class CurlTaskCreate(BaseModel):

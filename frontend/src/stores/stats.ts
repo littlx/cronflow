@@ -1,42 +1,22 @@
 import { defineStore } from 'pinia'
-import client from '@/api/client'
+import { getStats } from '@/api/stats'
+import type { StatsPayload, TaskLog } from '@/api/types'
 
-export interface TaskLogItem {
-  id: number
-  task_ref: string
-  task_name: string
-  trigger_type: string
-  status: string
-  attempt?: number
-  started_at: string
-  finished_at: string | null
-  duration: number | null
-  result: string | null
-  error: string | null
-}
-
-export interface StatsPayload {
-  total_tasks: number
-  total_schedules: number
-  active_schedules: number
-  total_runs: number
-  success_runs: number
-  failed_runs: number
-  running_runs: number
-  success_rate: number
-  system: { cpu_usage: number; memory_usage: number }
-  recent_logs: TaskLogItem[]
-}
-
+/**
+ * 全局监控数据 store。
+ * - fetch(): 主动拉取 (页面初始化/手动刷新)
+ * - apply(): 收到 socket stats_update 时刷新
+ * - pushLog(): 收到 socket new_log 时插入到 recent_logs 头部 (最多 50 条)
+ */
 export const useStatsStore = defineStore('stats', {
   state: () => ({
     data: null as StatsPayload | null,
-    logs: [] as TaskLogItem[],
+    logs: [] as TaskLog[],
   }),
   actions: {
     async fetch() {
       try {
-        const { data } = await client.get<StatsPayload>('/stats')
+        const data = await getStats()
         this.apply(data)
       } catch (e) {
         console.error('fetch stats failed', e)
@@ -46,9 +26,15 @@ export const useStatsStore = defineStore('stats', {
       this.data = payload
       this.logs = payload.recent_logs || []
     },
-    pushLog(log: TaskLogItem) {
-      this.logs.unshift(log)
-      if (this.logs.length > 50) this.logs.pop()
+    pushLog(log: TaskLog) {
+      // 同 id 去重 (后端可能因重试发出多次)
+      const idx = this.logs.findIndex((l) => l.id === log.id)
+      if (idx >= 0) {
+        this.logs.splice(idx, 1, log)
+      } else {
+        this.logs.unshift(log)
+        if (this.logs.length > 50) this.logs.pop()
+      }
     },
   },
   getters: {

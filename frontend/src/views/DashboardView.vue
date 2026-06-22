@@ -1,143 +1,87 @@
+<!--
+  DashboardView — 监控中心
+  - 4 个指标卡片 (复用 MetricCard)
+  - 最近日志表格 (复用 LogTerminal 详情)
+
+  数据全部来自 useStatsStore (全局 socket + 初始 fetch), 本组件无独立请求。
+-->
 <script setup lang="ts">
 import { ref } from 'vue'
-import { useStatsStore } from '@/stores/stats'
-import { ElMessage } from 'element-plus'
 import { Calendar, CircleCheck, Odometer, Cpu } from '@element-plus/icons-vue'
+import { useStatsStore } from '@/stores/stats'
+import MetricCard from '@/components/MetricCard.vue'
+import StatusTag from '@/components/StatusTag.vue'
+import LogTerminal from '@/components/LogTerminal.vue'
+import type { TaskLog } from '@/api/types'
+import { formatDateTime, formatDuration } from '@/utils/format'
 
 const stats = useStatsStore()
 
 const terminalVisible = ref(false)
-const selectedLog = ref<any>(null)
-
-function showTerminal(row: any) {
+const selectedLog = ref<TaskLog | null>(null)
+function showDetail(row: TaskLog) {
   selectedLog.value = row
   terminalVisible.value = true
 }
 
-function formatLogContent(val: any) {
-  if (!val) return 'No output returned.'
-  if (typeof val === 'object') {
-    return JSON.stringify(val, null, 2)
-  }
-  try {
-    const parsed = JSON.parse(val)
-    return JSON.stringify(parsed, null, 2)
-  } catch {
-    return String(val)
-  }
-}
-
-async function copyLogContent() {
-  if (!selectedLog.value) return
-  const text = selectedLog.value.status === 'success'
-    ? `[INFO] Task executed successfully. Return value:\n${formatLogContent(selectedLog.value.result)}`
-    : `[ERROR] Task execution failed:\n${selectedLog.value.error}${selectedLog.value.result ? `\n\n[INFO] Partial result:\n${formatLogContent(selectedLog.value.result)}` : ''}`
-  try {
-    await navigator.clipboard.writeText(text)
-    ElMessage.success('日志已复制到剪贴板')
-  } catch (err) {
-    ElMessage.error('复制失败')
-  }
-}
-
-function getStatusType(status: string) {
-  if (status === 'success') return 'success'
-  if (status === 'failed') return 'danger'
-  if (status === 'running') return 'info'
-  return 'warning'
-}
-
-function getStatusLabel(status: string) {
-  if (status === 'success') return '成功'
-  if (status === 'failed') return '失败'
-  if (status === 'running') return '运行中'
-  return status
-}
-
-function getTriggerLabel(triggerType: string) {
-  if (triggerType === 'interval') return '间隔'
-  if (triggerType === 'cron') return 'Cron'
-  if (triggerType === 'manual') return '手动'
-  return triggerType
+function triggerLabel(t: string) {
+  return { interval: '间隔', cron: 'Cron', manual: '手动' }[t] || t
 }
 </script>
 
 <template>
   <div class="page-container">
     <h2 class="page-title">监控中心</h2>
-    
-    <el-skeleton :loading="!stats.ready" animated>
-      <template #template>
-        <div class="grid grid-4" style="margin-bottom: 20px;">
-          <el-skeleton-item variant="rect" style="height: 100px; border-radius: var(--radius-lg);" v-for="i in 4" :key="i" />
-        </div>
-        <div class="panel">
-          <el-skeleton-item variant="h3" style="width: 20%; margin-bottom: 16px; height: 20px;" />
-          <el-skeleton-item variant="text" style="margin-bottom: 12px; height: 16px;" v-for="i in 5" :key="i" />
-        </div>
-      </template>
+
+    <el-skeleton :loading="!stats.ready" animated :rows="6">
       <template #default>
-        <div class="grid grid-4">
-          <div class="metric-card">
-            <div class="metric-info">
-              <div class="label">活跃调度 / 总调度</div>
-              <div class="value">{{ stats.data?.active_schedules ?? '-' }} / {{ stats.data?.total_schedules ?? '-' }}</div>
-            </div>
-            <div class="metric-icon brand">
-              <el-icon><Calendar /></el-icon>
-            </div>
-          </div>
-          <div class="metric-card">
-            <div class="metric-info">
-              <div class="label">执行成功率</div>
-              <div class="value">{{ stats.data?.success_rate ?? '-' }}%</div>
-            </div>
-            <div class="metric-icon success">
-              <el-icon><CircleCheck /></el-icon>
-            </div>
-          </div>
-          <div class="metric-card">
-            <div class="metric-info">
-              <div class="label">累计运行 / 运行中</div>
-              <div class="value">{{ stats.data?.total_runs ?? '-' }} / {{ stats.data?.running_runs ?? '-' }}</div>
-            </div>
-            <div class="metric-icon warning">
-              <el-icon><Odometer /></el-icon>
-            </div>
-          </div>
-          <div class="metric-card">
-            <div class="metric-info">
-              <div class="label">CPU / 内存</div>
-              <div class="value">{{ stats.data?.system?.cpu_usage ?? '-' }}% / {{ stats.data?.system?.memory_usage ?? '-' }}%</div>
-            </div>
-            <div class="metric-icon info">
-              <el-icon><Cpu /></el-icon>
-            </div>
-          </div>
+        <div class="grid grid-4" style="margin-bottom:20px">
+          <MetricCard
+            label="活跃调度 / 总调度"
+            :value="`${stats.data?.active_schedules ?? '-'} / ${stats.data?.total_schedules ?? '-'}`"
+            :icon="Calendar"
+            variant="brand"
+          />
+          <MetricCard
+            label="执行成功率"
+            :value="`${stats.data?.success_rate ?? 0}%`"
+            :icon="CircleCheck"
+            variant="success"
+          />
+          <MetricCard
+            label="累计运行 / 运行中"
+            :value="`${stats.data?.total_runs ?? '-'} / ${stats.data?.running_runs ?? '-'}`"
+            :icon="Odometer"
+            variant="warning"
+          />
+          <MetricCard
+            label="CPU / 内存"
+            :value="`${stats.data?.system?.cpu_usage ?? '-'}% / ${stats.data?.system?.memory_usage ?? '-'}%`"
+            :icon="Cpu"
+            variant="info"
+          />
         </div>
 
         <div class="panel">
-          <h3 style="margin-bottom:16px">最近日志</h3>
+          <h3 style="margin:0 0 16px;font-size:14px;font-weight:600">最近日志</h3>
           <el-empty v-if="!stats.logs.length" description="暂无日志" />
           <el-table v-else :data="stats.logs" size="small">
-            <el-table-column prop="task_name" label="任务" min-width="140" />
-            <el-table-column prop="status" label="状态" width="100">
-              <template #default="{ row }">
-                <el-tag :type="getStatusType(row.status)" size="small">
-                  {{ getStatusLabel(row.status) }}
-                </el-tag>
-              </template>
+            <el-table-column prop="task_name" label="任务" min-width="160" />
+            <el-table-column label="状态" width="100">
+              <template #default="{ row }"><StatusTag :status="row.status" /></template>
             </el-table-column>
-            <el-table-column prop="trigger_type" label="触发" width="100">
-              <template #default="{ row }">
-                <span>{{ getTriggerLabel(row.trigger_type) }}</span>
-              </template>
+            <el-table-column label="触发" width="100">
+              <template #default="{ row }">{{ triggerLabel(row.trigger_type) }}</template>
             </el-table-column>
-            <el-table-column prop="duration" label="耗时(s)" width="100" />
-            <el-table-column prop="started_at" label="开始时间" min-width="180" />
+            <el-table-column label="耗时" width="100">
+              <template #default="{ row }">{{ formatDuration(row.duration) }}</template>
+            </el-table-column>
+            <el-table-column label="开始时间" min-width="180">
+              <template #default="{ row }">{{ formatDateTime(row.started_at) }}</template>
+            </el-table-column>
             <el-table-column label="操作" width="100" fixed="right">
               <template #default="{ row }">
-                <el-button size="small" type="primary" link @click="showTerminal(row)">查看详情</el-button>
+                <el-button size="small" type="primary" link @click="showDetail(row)">查看详情</el-button>
               </template>
             </el-table-column>
           </el-table>
@@ -145,48 +89,13 @@ function getTriggerLabel(triggerType: string) {
       </template>
     </el-skeleton>
 
-    <!-- Terminal Simulator Dialog -->
-    <el-dialog v-model="terminalVisible" :title="`运行日志详情: ${selectedLog?.task_name}`" width="800px">
-      <div v-if="selectedLog" class="terminal-container">
-        <div class="terminal-header">
-          <div class="terminal-dots">
-            <span class="dot red"></span>
-            <span class="dot yellow"></span>
-            <span class="dot green"></span>
-          </div>
-          <div class="terminal-title">bash - log_output.log</div>
-          <el-button size="small" type="info" class="terminal-copy" @click="copyLogContent">复制日志</el-button>
-        </div>
-        <div class="terminal-body">
-          <div class="meta-section">
-            <div><span class="lbl">ID:</span> #{{ selectedLog.id }}</div>
-            <div><span class="lbl">状态:</span> 
-              <el-tag :type="getStatusType(selectedLog.status)" size="small">
-                {{ getStatusLabel(selectedLog.status) }}
-              </el-tag>
-            </div>
-            <div><span class="lbl">触发:</span> 
-              {{ getTriggerLabel(selectedLog.trigger_type) }}
-            </div>
-            <div><span class="lbl">耗时:</span> {{ selectedLog.duration ?? '-' }}s</div>
-            <div><span class="lbl">时间:</span> {{ selectedLog.started_at }}</div>
-          </div>
-          <hr class="terminal-divider" />
-          <div class="console-output">
-            <template v-if="selectedLog.status === 'success'">
-              <div class="console-line line-info">[INFO] Task executed successfully. Return value:</div>
-              <pre class="console-code">{{ formatLogContent(selectedLog.result) }}</pre>
-            </template>
-            <template v-else>
-              <div class="console-line line-error">[ERROR] Task execution failed:</div>
-              <pre class="console-code error-text">{{ selectedLog.error }}</pre>
-              <div v-if="selectedLog.result" class="console-line line-info">[INFO] Partial result:</div>
-              <pre v-if="selectedLog.result" class="console-code">{{ formatLogContent(selectedLog.result) }}</pre>
-            </template>
-          </div>
-        </div>
-      </div>
+    <el-dialog
+      v-model="terminalVisible"
+      :title="`日志详情: ${selectedLog?.task_name ?? ''}`"
+      width="820px"
+      destroy-on-close
+    >
+      <LogTerminal :log="selectedLog" />
     </el-dialog>
   </div>
 </template>
-

@@ -1,37 +1,26 @@
 """EventBus — 唯一的 SocketIO emit 出口。
 
-设计目标: 收敛所有实时推送到一个单例, 根治 fd 泄漏。
-架构:
-- API 主进程: AsyncServer(async_mode='asgi') 持有前端 websocket 连接, 同时用 AsyncRedisManager
-  作为 client_manager, 订阅 Redis 上的扇出消息。
-- Worker 进程: 通过同步 RedisManager.emit() 把消息发到 Redis, 由 API 进程的 AsyncRedisManager
-  订阅后扇出给所有连接的前端 client。
+单进程架构: 用 AsyncServer 默认内存 manager, 不再需要 Redis 跨进程扇出。
+根治旧版 fd 泄漏: 全局单例, 整个进程一份。
 
-关键: 两端必须使用同一个 Redis manager (相同 redis url + channel), 才能跨进程扇出。
+main.py 把 sio 用 socketio.ASGIApp 包在 FastAPI 外层 (FastAPI 作为
+other_asgi_app), 这样 /socket.io 路径走 sio, 其他请求走 FastAPI。
 """
 from __future__ import annotations
 
-import socketio
-from socketio import AsyncRedisManager, AsyncServer, RedisManager, Server
+from socketio import AsyncServer
 
-from app.core.config import settings
+from app.core.logging import get_logger
 
-# 共享的 Redis manager: API 端用 async, worker 端用 sync, 但都连同一个 Redis,
-# socketio 内部用相同的 channel ('socketio') 扇出。
-_redis_url = settings.redis_url
+logger = get_logger("eventbus")
 
-# API 端: async server, 持有前端连接 + 订阅 Redis 扇出
-_async_manager = AsyncRedisManager(_redis_url)
+# 单进程: 内存 manager, 无需 Redis
 sio: AsyncServer = AsyncServer(
     async_mode="asgi",
-    client_manager=_async_manager,
     cors_allowed_origins="*",
     logger=False,
     engineio_logger=False,
 )
-
-# 可被 FastAPI 挂载的 ASGI app
-sio_app = socketio.ASGIApp(sio, socketio_path="socket.io")
 
 # ---- 事件名常量, 前后端共用 ----
 EVENT_NEW_LOG = "new_log"
@@ -42,14 +31,17 @@ EVENT_CURL_CHANGED = "curl_changed"
 
 @sio.event
 async def connect(sid, environ):  # noqa: ANN001
-    print(f"[EventBus] client connected: {sid}")
+    logger.info("client connected", sid=sid)
 
 
 @sio.event
 async def disconnect(sid):  # noqa: ANN001
-    print(f"[EventBus] client disconnected: {sid}")
+    logger.info("client disconnected", sid=sid)
 
 
 async def emit(event: str, data: dict) -> None:
-    """API 进程内 async emit (经 Redis manager 扇出)。"""
-    await sio.emit(event, data)
+    """进程内 async emit (单进程直接扇出给前端连接)。"""
+    try:
+        await sio.emit(event, data)
+    except Exception:
+        logger.exception("emit failed", event=event)

@@ -12,28 +12,13 @@ from app.services import schedule_service
 router = APIRouter(prefix="/api/schedules", tags=["schedules"])
 
 
-def _enrich(d: dict, schedule_id: int, enabled: bool) -> dict:
-    """从 redbeat 读 due_at 覆盖 DB 中不可靠的 next_run_time。"""
-    if not enabled:
-        d["next_run_time"] = None
-        return d
-    try:
-        from scheduler.beat import get_next_run_time
-        nrt = get_next_run_time(schedule_id)
-        if nrt:
-            d["next_run_time"] = nrt
-    except Exception:
-        pass
-    return d
-
-
 @router.get("", response_model=list[ScheduleOut])
 async def list_schedules(
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
 ):
     rows = await schedule_service.list_schedules(db)
-    return [_enrich(r.to_dict(), r.id, r.enabled) for r in rows]
+    return [r.to_dict() for r in rows]
 
 
 @router.post("", response_model=ScheduleOut)
@@ -43,7 +28,7 @@ async def create_schedule(
     user: CurrentUser = Depends(get_current_user),
 ):
     sched = await schedule_service.create_schedule(db, payload)
-    return _enrich(sched.to_dict(), sched.id, sched.enabled)
+    return sched.to_dict()
 
 
 @router.put("/{schedule_id}", response_model=ScheduleOut)
@@ -56,7 +41,7 @@ async def update_schedule(
     sched = await schedule_service.update_schedule(db, schedule_id, payload)
     if not sched:
         raise HTTPException(status_code=404, detail="调度不存在")
-    return _enrich(sched.to_dict(), sched.id, sched.enabled)
+    return sched.to_dict()
 
 
 @router.delete("/{schedule_id}")
@@ -80,4 +65,4 @@ async def toggle_schedule(
     sched = await schedule_service.toggle_schedule(db, schedule_id)
     if not sched:
         raise HTTPException(status_code=404, detail="调度不存在")
-    return _enrich(sched.to_dict(), sched.id, sched.enabled)
+    return sched.to_dict()

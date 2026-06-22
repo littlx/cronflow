@@ -1,4 +1,4 @@
-"""Prometheus 指标定义 (基础版)。
+"""Prometheus 指标定义。
 
 label 命名沿用模型字段: task_ref / status / trigger_type, 与 task_logs 表一致。
 """
