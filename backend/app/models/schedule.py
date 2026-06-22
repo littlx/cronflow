@@ -3,6 +3,7 @@
 - curl  kind: 形如 'curl:<uuid>' 或纯 uuid (引用 tasks 表的 id)
 
 调度层不再分叉 task_type, 由 task_ref 解析为对应 kind 后分派。
+next_run_time / redbeat_key 由 redbeat 自身维护, 不在 DB 双写。
 """
 from __future__ import annotations
 
@@ -32,11 +33,6 @@ class JobSchedule(Base):
     task_args: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
-    redbeat_key: Mapped[str | None] = mapped_column(String(255), nullable=True)
-
-    next_run_time: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=_utcnow, nullable=False
     )
@@ -44,11 +40,10 @@ class JobSchedule(Base):
         DateTime(timezone=True), default=_utcnow, onupdate=_utcnow, nullable=False
     )
 
-    __table_args__ = (
-        Index("ix_schedules_enabled_next_run", "enabled", "next_run_time"),
-    )
+    __table_args__ = (Index("ix_schedules_enabled", "enabled"),)
 
     def to_dict(self) -> dict:
+        # next_run_time 由 routers 从 redbeat 实时填充, 不在此返回
         return {
             "id": self.id,
             "task_ref": self.task_ref,
@@ -57,8 +52,6 @@ class JobSchedule(Base):
             "trigger_args": self.trigger_args or {},
             "task_args": self.task_args or {},
             "enabled": self.enabled,
-            "redbeat_key": self.redbeat_key,
-            "next_run_time": self.next_run_time.isoformat() if self.next_run_time else None,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }

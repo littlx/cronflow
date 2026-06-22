@@ -2,79 +2,129 @@
 
 计数器: total / success / failed / running。由 worker 在执行前后 INCR/DECR 维护,
 stats 接口直接读 Redis + 取最近 10 条日志, 替代旧版每 5 秒全表 count。
+
+本模块同时承担 prometheus gauge 同步刷新职责 (ACTIVE_SCHEDULES / REGISTERED_TASKS)。
+异步 (compute_stats) 与同步 (compute_stats_sync) 共享 _assemble_payload, 防止两边漂移。
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from typing import Any
 
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Session
 
-from app.core.redis import async_redis, get_redis_stats_key
+from app.core.redis import async_redis, get_redis_stats_key, sync_redis
 from app.models.schedule import JobSchedule
 from app.models.task_log import TaskLog
 
 
-async def _get_counter(metric: str) -> int:
-    val = await async_redis.get(get_redis_stats_key(metric))
-    return int(val) if val else 0
+_METRICS = ("total", "success", "failed", "running")
 
 
-async def compute_stats(db: AsyncSession) -> dict:
-    """组装一份完整的看板数据。"""
-    total_tasks = 0
+# ---- 共享组装 ----
+
+def _system_metrics() -> dict[str, float]:
     try:
-        from app.registry import TASKS
-        total_tasks = len(TASKS)
+        import psutil
+        return {"cpu_usage": psutil.cpu_percent(), "memory_usage": psutil.virtual_memory().percent}
+    except Exception:
+        return {"cpu_usage": 0.0, "memory_usage": 0.0}
+
+
+def _refresh_gauges(*, total_tasks: int, active_count: int) -> None:
+    """每次组装顺手刷一下 prometheus gauge, 失败不影响主路径。"""
+    try:
+        from app.core.metrics import ACTIVE_SCHEDULES, REGISTERED_TASKS
+        REGISTERED_TASKS.set(total_tasks)
+        ACTIVE_SCHEDULES.set(active_count)
     except Exception:
         pass
 
-    total_schedules = (await db.execute(select(JobSchedule))).scalars().all()
-    active = [s for s in total_schedules if s.enabled]
 
-    total_runs = await _get_counter("total")
-    success_runs = await _get_counter("success")
-    failed_runs = await _get_counter("failed")
-    running_runs = await _get_counter("running")
+def _assemble_payload(
+    *,
+    schedules: list,
+    recent_logs: list[dict],
+    counters: dict[str, int],
+    total_tasks: int,
+    system: dict[str, float],
+) -> dict:
+    active = [s for s in schedules if s.enabled]
+    success = counters["success"]
+    failed = counters["failed"]
+    finished = success + failed
+    rate = round((success / finished) * 100, 2) if finished > 0 else 0.0
 
-    finished = success_runs + failed_runs
-    success_rate = round((success_runs / finished) * 100, 2) if finished > 0 else 0.0
-
-    recent = (await db.execute(
-        select(TaskLog).order_by(desc(TaskLog.started_at)).limit(10)
-    )).scalars().all()
-
-    # 系统指标
-    try:
-        import psutil
-        cpu = psutil.cpu_percent()
-        mem = psutil.virtual_memory().percent
-    except Exception:
-        cpu = 0.0
-        mem = 0.0
+    _refresh_gauges(total_tasks=total_tasks, active_count=len(active))
 
     return {
         "total_tasks": total_tasks,
-        "total_schedules": len(total_schedules),
+        "total_schedules": len(schedules),
         "active_schedules": len(active),
-        "total_runs": total_runs,
-        "success_runs": success_runs,
-        "failed_runs": failed_runs,
-        "running_runs": running_runs,
-        "success_rate": success_rate,
-        "system": {"cpu_usage": cpu, "memory_usage": mem},
-        "recent_logs": [r.to_dict() for r in recent],
+        "total_runs": counters["total"],
+        "success_runs": success,
+        "failed_runs": failed,
+        "running_runs": counters["running"],
+        "success_rate": rate,
+        "system": system,
+        "recent_logs": recent_logs,
     }
 
 
+def _read_counters_sync() -> dict[str, int]:
+    return {m: int(sync_redis.get(get_redis_stats_key(m)) or 0) for m in _METRICS}
+
+
+async def _read_counters_async() -> dict[str, int]:
+    keys = [get_redis_stats_key(m) for m in _METRICS]
+    vals = await async_redis.mget(*keys)
+    return dict(zip(_METRICS, [int(v or 0) for v in vals]))
+
+
+# ---- 入口 ----
+
+async def compute_stats(db: AsyncSession) -> dict:
+    """API / 异步路径: 组装看板数据。"""
+    from app.registry import TASKS
+
+    schedules = (await db.execute(select(JobSchedule))).scalars().all()
+    recent = (await db.execute(
+        select(TaskLog).order_by(desc(TaskLog.started_at)).limit(10)
+    )).scalars().all()
+    return _assemble_payload(
+        schedules=list(schedules),
+        recent_logs=[r.to_dict() for r in recent],
+        counters=await _read_counters_async(),
+        total_tasks=len(TASKS),
+        system=_system_metrics(),
+    )
+
+
+def compute_stats_sync(session: Session) -> dict:
+    """worker / 同步路径: 与 compute_stats 完全一致的载荷。"""
+    from app.registry import TASKS
+
+    schedules = session.execute(select(JobSchedule)).scalars().all()
+    recent = session.execute(
+        select(TaskLog).order_by(desc(TaskLog.started_at)).limit(10)
+    ).scalars().all()
+    return _assemble_payload(
+        schedules=list(schedules),
+        recent_logs=[r.to_dict() for r in recent],
+        counters=_read_counters_sync(),
+        total_tasks=len(TASKS),
+        system=_system_metrics(),
+    )
+
+
 # ---- worker 同步维护计数器 (worker 进程用同步 redis) ----
+
 def _incr(metric: str, n: int = 1) -> None:
-    from app.core.redis import sync_redis
     sync_redis.incrby(get_redis_stats_key(metric), n)
 
 
 def _decr(metric: str, n: int = 1) -> None:
-    from app.core.redis import sync_redis
     sync_redis.decrby(get_redis_stats_key(metric), n)
 
 
@@ -94,8 +144,7 @@ def mark_failed() -> None:
 
 
 def reset_counters() -> dict:
-    """重置计数器 (调试用)。"""
-    from app.core.redis import sync_redis
-    for m in ("total", "success", "failed", "running"):
+    """重置计数器 (调试/清空日志)。"""
+    for m in _METRICS:
         sync_redis.set(get_redis_stats_key(m), 0)
     return {"reset": True}

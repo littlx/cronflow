@@ -1,7 +1,7 @@
 """celery-redbeat 调度 entry 增删 helper。
 
 统一发 task 'worker.run_task', kwargs 携带 task_ref, 由 worker 端解析 ref → kind → handler。
-不再分发 python / curl 两种 task name。
+任务级 queue / priority 通过 entry.options 透传给 celery, redis broker 上 priority 0~9 生效。
 """
 from __future__ import annotations
 
@@ -44,6 +44,15 @@ def _build_schedule(trigger_type: str, trigger_args: dict[str, Any]):
     raise ValueError(f"不支持的触发类型: {trigger_type}")
 
 
+def _build_options(queue: str | None, priority: int | None) -> dict[str, Any]:
+    opts: dict[str, Any] = {}
+    if queue:
+        opts["queue"] = queue
+    if priority is not None:
+        opts["priority"] = int(priority)
+    return opts
+
+
 def upsert_schedule_entry(
     schedule_id: int,
     task_ref: str,
@@ -51,6 +60,8 @@ def upsert_schedule_entry(
     trigger_args: dict[str, Any],
     task_args: dict[str, Any] | None = None,
     enabled: bool = True,
+    queue: str | None = None,
+    priority: int | None = None,
 ) -> str:
     """新增/更新一个 redbeat entry, 返回 entry name。"""
     from redbeat import RedBeatSchedulerEntry
@@ -64,12 +75,14 @@ def upsert_schedule_entry(
         "task_args": task_args or {},
         "schedule_id": schedule_id,
     }
+    options = _build_options(queue, priority)
 
     entry = RedBeatSchedulerEntry(
         name=entry_name,
         task=_RUN_TASK,
         schedule=schedule,
         kwargs=kwargs,
+        options=options or None,
         app=celery_app,
     )
     entry.save()
@@ -104,8 +117,8 @@ def set_schedule_enabled(schedule_id: int, enabled: bool) -> None:
 def get_next_run_time(schedule_id: int) -> str | None:
     """读 redbeat entry 的 due_at, 返回 ISO 字符串; 取不到/未启用返回 None。
 
-    DB 上的 job_schedules.next_run_time 列由 redbeat 自己维护并不可靠,
-    真相源就是 redbeat 自己; API 列表接口在序列化时实时调用本函数填充。
+    DB 已不再保存 next_run_time, 真相源就是 redbeat 本身;
+    API 列表接口在序列化时实时调用本函数填充。
     """
     try:
         from redbeat import RedBeatSchedulerEntry

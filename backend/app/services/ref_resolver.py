@@ -8,10 +8,9 @@
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
@@ -28,7 +27,9 @@ class ResolvedTask:
     name: str
     description: str
     handler_config: dict[str, Any]   # python: {} ; curl: {url, method, ...}
-    parameters: list[dict]           # python 自省结果; curl 为空
+    parameters: list[dict] = field(default_factory=list)  # python 自省结果; curl 为空
+    queue: str | None = None         # 任务级路由
+    priority: int | None = None      # 任务级优先级
 
 
 def _looks_like_python_ref(ref: str) -> bool:
@@ -55,17 +56,22 @@ def _python_resolved(task_id: str) -> ResolvedTask | None:
         description=t["description"],
         handler_config={},
         parameters=t["parameters"],
+        queue=t.get("queue"),
+        priority=t.get("priority"),
     )
 
 
 def _curl_resolved_from_row(row: Task) -> ResolvedTask:
+    cfg = row.handler_config or {}
     return ResolvedTask(
         ref=f"{CURL_PREFIX}{row.id}",
         kind=row.kind,
         name=row.name,
         description=row.description or "",
-        handler_config=row.handler_config or {},
+        handler_config=cfg,
         parameters=[],
+        queue=cfg.get("queue") if isinstance(cfg, dict) else None,
+        priority=cfg.get("priority") if isinstance(cfg, dict) else None,
     )
 
 

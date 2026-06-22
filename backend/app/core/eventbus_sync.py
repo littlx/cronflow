@@ -49,8 +49,9 @@ def emit_stats_update(stats: dict) -> None:
     emit_sync(EVENT_STATS_UPDATE, stats)
 
 
-def emit_schedule_changed() -> None:
-    emit_sync(EVENT_SCHEDULE_CHANGED, {})
+def emit_schedule_changed(payload: dict | None = None) -> None:
+    """schedule_changed 事件, 携带 {action, id} 等载荷便于前端局部刷新。"""
+    emit_sync(EVENT_SCHEDULE_CHANGED, payload or {})
 
 
 def emit_curl_changed() -> None:

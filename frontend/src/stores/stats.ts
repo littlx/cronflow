@@ -3,10 +3,11 @@ import client from '@/api/client'
 
 export interface TaskLogItem {
   id: number
-  task_id: string
+  task_ref: string
   task_name: string
   trigger_type: string
   status: string
+  attempt?: number
   started_at: string
   finished_at: string | null
   duration: number | null

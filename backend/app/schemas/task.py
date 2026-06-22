@@ -22,6 +22,9 @@ class TaskOut(BaseModel):
     description: str = ""
     handler_config: dict[str, Any] = {}
     parameters: list[TaskParameter] = []
+    # 任务级路由/限流, 由 register_task 或 curl handler_config 提供
+    queue: str | None = None
+    priority: int | None = None
     # curl-only:
     id: str | None = None
     created_at: str | None = None
@@ -37,6 +40,9 @@ class CurlHandlerConfig(BaseModel):
     data: dict[str, Any] | str | None = None   # dict (JSON body) | str (form/raw) | None
     handler_type: str = "PURE_JSON"          # PURE_JSON | NESTED_DATA | RAW_RESPONSE
     target_collection: str
+    # 任务级路由/限流: 直接写入 handler_config, ref_resolver 提取
+    queue: str | None = None
+    priority: int | None = None
 
 
 class CurlTaskCreate(BaseModel):

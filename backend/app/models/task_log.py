@@ -17,7 +17,8 @@ class TaskLog(Base):
     __tablename__ = "task_logs"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    task_id: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    # 统一 ref 字符串: python 'tasks.<m>.<f>' / curl 'curl:<uuid>'
+    task_ref: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     task_name: Mapped[str] = mapped_column(String(255), nullable=False)
     # 'manual' | 'interval' | 'cron'
     trigger_type: Mapped[str] = mapped_column(String(50), nullable=False)
@@ -40,7 +41,7 @@ class TaskLog(Base):
     def to_dict(self) -> dict:
         return {
             "id": self.id,
-            "task_id": self.task_id,
+            "task_ref": self.task_ref,
             "task_name": self.task_name,
             "trigger_type": self.trigger_type,
             "schedule_id": self.schedule_id,

@@ -25,6 +25,14 @@ async def lifespan(app: FastAPI):
     from app.registry.discover import discover_tasks
 
     discover_tasks()
+
+    # prometheus 注册数 gauge 初始化 (每次 stats compute 也会刷新, 这里给个启动值)
+    try:
+        from app.core.metrics import REGISTERED_TASKS
+        from app.registry import TASKS
+        REGISTERED_TASKS.set(len(TASKS))
+    except Exception:
+        pass
     yield
 
 

@@ -79,15 +79,27 @@ async def trigger_task(
     if not resolved:
         raise HTTPException(status_code=404, detail=f"任务不存在: {payload.task_ref}")
 
+    # 触发前校验任务参数 (python 任务 required 字段, 类型)
+    from app.services.task_service import validate_task_args
+    errors = validate_task_args(resolved, payload.task_args)
+    if errors:
+        raise HTTPException(status_code=422, detail={"errors": errors})
+
     from worker.celery_app import celery_app
-    result = celery_app.send_task(
-        "worker.run_task",
-        kwargs={
+    send_kwargs: dict = {
+        "kwargs": {
             "task_ref": payload.task_ref,
             "trigger_type": "manual",
             "task_args": payload.task_args,
         },
-    )
+    }
+    # 任务级路由/优先级透传给 celery (broker 支持时生效)
+    if resolved.queue:
+        send_kwargs["queue"] = resolved.queue
+    if resolved.priority is not None:
+        send_kwargs["priority"] = int(resolved.priority)
+
+    result = celery_app.send_task("worker.run_task", **send_kwargs)
     return {"ok": True, "celery_id": result.id, "task_ref": payload.task_ref, "kind": resolved.kind}
 
 

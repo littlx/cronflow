@@ -5,6 +5,11 @@ import { ElMessage } from 'element-plus'
 
 const logs = ref<any[]>([])
 const loading = ref(false)
+const total = ref(0)
+const page = ref(1)
+const pageSize = ref(50)
+const filterRef = ref('')
+const filterStatus = ref('')
 
 const terminalVisible = ref(false)
 const selectedLog = ref<any>(null)
@@ -42,9 +47,22 @@ async function copyLogContent() {
 
 async function load() {
   loading.value = true
-  try { const { data } = await client.get('/logs'); logs.value = data }
-  finally { loading.value = false }
+  try {
+    const { data } = await client.get('/logs', {
+      params: {
+        limit: pageSize.value,
+        offset: (page.value - 1) * pageSize.value,
+        task_ref: filterRef.value || undefined,
+        status: filterStatus.value || undefined,
+      },
+    })
+    logs.value = data.items || []
+    total.value = data.total ?? logs.value.length
+  } finally { loading.value = false }
 }
+
+function onPageChange(p: number) { page.value = p; load() }
+function onFilterChange() { page.value = 1; load() }
 
 function getStatusType(status: string) {
   if (status === 'success') return 'success'
@@ -76,6 +94,15 @@ onMounted(load)
     <el-skeleton :loading="loading && !logs.length" animated :rows="8">
       <template #default>
         <div class="panel">
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+            <el-input v-model="filterRef" placeholder="按 task_ref 过滤" clearable style="width:260px" @clear="onFilterChange" @keyup.enter="onFilterChange" />
+            <el-select v-model="filterStatus" placeholder="状态" clearable style="width:140px" @change="onFilterChange" @clear="onFilterChange">
+              <el-option label="成功" value="success" />
+              <el-option label="失败" value="failed" />
+              <el-option label="运行中" value="running" />
+            </el-select>
+            <el-button @click="onFilterChange">查询</el-button>
+          </div>
           <el-empty v-if="!logs.length" description="暂无日志" />
           <el-table v-else :data="logs" size="small">
             <el-table-column prop="task_name" label="任务" min-width="140" />
@@ -100,6 +127,15 @@ onMounted(load)
               </template>
             </el-table-column>
           </el-table>
+          <div v-if="total > 0" style="display:flex;justify-content:flex-end;margin-top:12px">
+            <el-pagination
+              :current-page="page"
+              :page-size="pageSize"
+              :total="total"
+              layout="total, prev, pager, next"
+              @current-change="onPageChange"
+            />
+          </div>
         </div>
       </template>
     </el-skeleton>

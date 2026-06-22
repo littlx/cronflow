@@ -175,7 +175,14 @@ function timeUntil(timeStr: string | null): string {
 
 onMounted(() => {
   load()
-  socket.on('schedule_changed', () => load())
+  // schedule_changed 携带 {action, id}: deleted 直接局部移除, 其他动作回拉一次
+  socket.on('schedule_changed', (payload: any) => {
+    if (payload && payload.action === 'deleted' && payload.id != null) {
+      schedules.value = schedules.value.filter((s) => s.id !== payload.id)
+      return
+    }
+    load()
+  })
 })
 </script>
 

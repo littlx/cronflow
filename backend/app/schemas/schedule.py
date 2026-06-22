@@ -34,7 +34,7 @@ class ScheduleOut(BaseModel):
     trigger_args: dict[str, Any]
     task_args: dict[str, Any]
     enabled: bool
-    redbeat_key: str | None = None
+    # 由路由从 redbeat 实时计算填充, 不来自 DB
     next_run_time: str | None = None
     created_at: str | None = None
     updated_at: str | None = None

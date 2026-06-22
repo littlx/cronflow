@@ -1,7 +1,7 @@
 """统一 Celery 执行单元 — worker.run_task。
 
 唯一入口: 解析 task_ref → kind → 分派到对应 handler。
-共享逻辑: 幂等 / 写日志 / 重试 / Redis 计数器 / emit。
+共享逻辑: 幂等 / 写日志 / 重试 / Redis 计数器 / emit / prometheus。
 
 handler 只关心"做什么", runner 关心"怎么跑、记录、广播"。
 
@@ -10,7 +10,8 @@ handler 只关心"做什么", runner 关心"怎么跑、记录、广播"。
 - 每次 attempt 都新建一行 TaskLog (attempt 字段 = retries+1), 重试历史完整可追溯。
 - Redis 计数器: 首次进入 mark_running (running++, total++); 终态 (成功/最终失败)
   统一 mark_success / mark_failed (running--, success/failed++). 重试中间态不计数。
-- _emit_stats 仅在终态广播, 避免被重试压垮。
+- prometheus: 终态时 TASK_TOTAL.inc + TASK_DURATION.observe; 计数器和直方图都按
+  task_ref / status / trigger_type 打 label。
 """
 from __future__ import annotations
 
@@ -26,10 +27,11 @@ from sqlalchemy.exc import OperationalError
 from app.core.config import settings
 from app.core.db_sync import get_sync_session
 from app.core.eventbus_sync import emit_curl_changed, emit_new_log, emit_stats_update
+from app.core.metrics import TASK_DURATION, TASK_TOTAL
 from app.core.redis import sync_redis
 from app.models.task_log import TaskLog
 from app.services.ref_resolver import resolve_ref_sync
-from app.services.stats import mark_failed, mark_running, mark_success
+from app.services.stats import compute_stats_sync, mark_failed, mark_running, mark_success
 from worker.handlers import HandlerResult, curl_handler, python_handler
 
 # kind -> handler module
@@ -69,45 +71,25 @@ def _auto_triggered_at() -> str:
 
 
 def _emit_stats() -> None:
+    """组装并广播完整 stats 载荷 (与 API /api/stats 保持完全一致)。"""
     try:
-        import psutil
-        from sqlalchemy import desc, select
-
-        from app.models.schedule import JobSchedule
-        from app.registry import TASKS
-
         session = get_sync_session()
         try:
-            schedules = session.execute(select(JobSchedule)).scalars().all()
-            active = [s for s in schedules if s.enabled]
-            total = int(sync_redis.get("cronflow:stats:total") or 0)
-            success = int(sync_redis.get("cronflow:stats:success") or 0)
-            failed = int(sync_redis.get("cronflow:stats:failed") or 0)
-            running = int(sync_redis.get("cronflow:stats:running") or 0)
-            finished = success + failed
-            rate = round((success / finished) * 100, 2) if finished > 0 else 0.0
-            recent = session.execute(
-                select(TaskLog).order_by(desc(TaskLog.started_at)).limit(10)
-            ).scalars().all()
-            cpu = psutil.cpu_percent()
-            mem = psutil.virtual_memory().percent
-            payload = {
-                "total_tasks": len(TASKS),
-                "total_schedules": len(schedules),
-                "active_schedules": len(active),
-                "total_runs": total,
-                "success_runs": success,
-                "failed_runs": failed,
-                "running_runs": running,
-                "success_rate": rate,
-                "system": {"cpu_usage": cpu, "memory_usage": mem},
-                "recent_logs": [r.to_dict() for r in recent],
-            }
+            payload = compute_stats_sync(session)
         finally:
             session.close()
         emit_stats_update(payload)
     except Exception as e:
         print(f"[task_runner] emit_stats failed: {e}")
+
+
+def _record_metric(task_ref: str, status: str, trigger_type: str, duration: float | None) -> None:
+    try:
+        TASK_TOTAL.labels(task_ref=task_ref, status=status, trigger_type=trigger_type).inc()
+        if duration is not None:
+            TASK_DURATION.labels(task_ref=task_ref).observe(duration)
+    except Exception:
+        pass  # 监控失败绝不影响主路径
 
 
 @shared_task(
@@ -156,7 +138,7 @@ def run_task(
         # ---- 2) 写一行 running 日志 (每次 attempt 都新建, 不再覆盖)
         started = datetime.now(timezone.utc)
         log = TaskLog(
-            task_id=resolved.ref,
+            task_ref=resolved.ref,
             task_name=resolved.name,
             trigger_type=trigger_type,
             schedule_id=schedule_id,
@@ -203,6 +185,7 @@ def run_task(
 
         # 终态: 扣 running, 增 success, 广播
         mark_success()
+        _record_metric(resolved.ref, "success", trigger_type, duration)
         emit_new_log(log_dict)
         if resolved.kind == "curl":
             emit_curl_changed()
@@ -231,10 +214,11 @@ def run_task(
 
         # 每次失败的日志行都广播, 让前端看到重试过程
         emit_new_log(log_dict)
+        # 中间态也记一笔 failed / duration, 方便观察重试链路
+        _record_metric(resolved.ref, "failed", trigger_type, duration)
 
         if not is_final:
             # 中间态: 不动计数器, 让 celery 自动退避重试
-            # (本 attempt 的 log 已写入 failed, 下次 attempt 会新开一行)
             raise
 
         # 终态失败: 扣 running, 增 failed, 推送统计
