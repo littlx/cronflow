@@ -4,6 +4,10 @@
 
   props:
     - log: TaskLog 对象 (null 时不渲染)
+
+  视觉:
+    - 精致的终端式窗口 (macOS traffic light + 渐变标题栏)
+    - 结构化 meta 信息 + 语法着色输出
 -->
 <script setup lang="ts">
 import { ElMessage } from 'element-plus'
@@ -45,40 +49,69 @@ async function copy() {
 
 <template>
   <div v-if="log" class="terminal">
+    <!-- 标题栏 -->
     <div class="terminal-header">
       <div class="dots">
         <span class="dot red"></span>
         <span class="dot yellow"></span>
         <span class="dot green"></span>
       </div>
-      <div class="title">log #{{ log.id }} - attempt {{ log.attempt }}</div>
-      <el-button size="small" plain @click="copy">复制日志</el-button>
+      <div class="terminal-title">log #{{ log.id }} · attempt {{ log.attempt }}</div>
+      <el-button size="small" class="copy-btn" @click="copy">复制日志</el-button>
     </div>
+
+    <!-- 内容区 -->
     <div class="terminal-body">
-      <div class="meta">
-        <div><span class="lbl">任务:</span> {{ log.task_name }}</div>
-        <div><span class="lbl">ref:</span> <code>{{ log.task_ref }}</code></div>
-        <div><span class="lbl">状态:</span> <StatusTag :status="log.status" /></div>
-        <div><span class="lbl">触发:</span> {{ triggerLabel(log.trigger_type) }}</div>
-        <div><span class="lbl">尝试:</span> 第 {{ log.attempt }} 次</div>
-        <div><span class="lbl">耗时:</span> {{ formatDuration(log.duration) }}</div>
-        <div><span class="lbl">开始:</span> {{ formatDateTime(log.started_at) }}</div>
-        <div><span class="lbl">结束:</span> {{ formatDateTime(log.finished_at) }}</div>
+      <div class="meta-grid">
+        <div class="meta-item">
+          <span class="lbl">任务</span>
+          <span class="val">{{ log.task_name }}</span>
+        </div>
+        <div class="meta-item">
+          <span class="lbl">ref</span>
+          <code class="val">{{ log.task_ref }}</code>
+        </div>
+        <div class="meta-item">
+          <span class="lbl">状态</span>
+          <span class="val"><StatusTag :status="log.status" /></span>
+        </div>
+        <div class="meta-item">
+          <span class="lbl">触发</span>
+          <span class="val">{{ triggerLabel(log.trigger_type) }}</span>
+        </div>
+        <div class="meta-item">
+          <span class="lbl">尝试</span>
+          <span class="val">第 {{ log.attempt }} 次</span>
+        </div>
+        <div class="meta-item">
+          <span class="lbl">耗时</span>
+          <span class="val">{{ formatDuration(log.duration) }}</span>
+        </div>
+        <div class="meta-item">
+          <span class="lbl">开始</span>
+          <span class="val">{{ formatDateTime(log.started_at) }}</span>
+        </div>
+        <div class="meta-item">
+          <span class="lbl">结束</span>
+          <span class="val">{{ formatDateTime(log.finished_at) }}</span>
+        </div>
       </div>
-      <hr class="divider" />
+
+      <div class="divider"></div>
+
       <div class="output">
         <template v-if="log.status === 'success'">
-          <div class="line info">[INFO] Task executed successfully. Return value:</div>
+          <div class="line info">→ Task executed successfully</div>
           <pre class="code">{{ formatContent(log.result) }}</pre>
         </template>
         <template v-else-if="log.status === 'running'">
-          <div class="line info">[RUNNING] Task is still in progress...</div>
+          <div class="line info pulse">⏳ Running — task is still in progress...</div>
         </template>
         <template v-else>
-          <div class="line error">[ERROR] Task execution failed:</div>
+          <div class="line error">✗ Task execution failed</div>
           <pre class="code error-text">{{ log.error }}</pre>
           <template v-if="log.result">
-            <div class="line info">[INFO] Partial result:</div>
+            <div class="line info">→ Partial result</div>
             <pre class="code">{{ formatContent(log.result) }}</pre>
           </template>
         </template>
@@ -88,81 +121,148 @@ async function copy() {
 </template>
 
 <style scoped>
+/* ---- Terminal container ---- */
 .terminal {
   background: #0d1117;
-  border-radius: 8px;
+  border-radius: var(--cf-radius-lg);
   overflow: hidden;
-  font-family: 'SF Mono', Menlo, Monaco, 'Courier New', monospace;
+  font-family: 'JetBrains Mono', 'SF Mono', Menlo, Monaco, 'Courier New', monospace;
+  border: 1px solid rgba(48, 54, 61, 0.6);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25), inset 0 0 0 1px rgba(255, 255, 255, 0.04);
 }
+
+/* ---- Header ---- */
 .terminal-header {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 10px 14px;
-  background: #21262d;
+  padding: 10px 16px;
+  background:
+    linear-gradient(180deg, #1c2333 0%, #161b2a 100%);
   border-bottom: 1px solid #30363d;
 }
 .dots {
   display: flex;
-  gap: 6px;
+  gap: 7px;
+  flex-shrink: 0;
 }
 .dot {
-  width: 12px;
-  height: 12px;
+  width: 11px;
+  height: 11px;
   border-radius: 50%;
+  transition: opacity 0.15s;
 }
-.dot.red { background: #ff5f56; }
+.dot.red    { background: #ff5f56; }
 .dot.yellow { background: #ffbd2e; }
-.dot.green { background: #27c93f; }
-.title {
+.dot.green  { background: #27c93f; }
+
+.terminal-title {
   flex: 1;
-  font-size: 12px;
-  color: #c9d1d9;
+  font-size: 11.5px;
+  color: #8b949e;
   text-align: center;
+  letter-spacing: 0.3px;
 }
+.copy-btn {
+  flex-shrink: 0;
+  background: rgba(110, 118, 129, 0.15);
+  color: #c9d1d9;
+  border: 1px solid rgba(110, 118, 129, 0.25);
+  border-radius: 6px;
+  font-family: inherit;
+  height: 26px;
+  font-size: 11px;
+}
+.copy-btn:hover {
+  background: rgba(110, 118, 129, 0.25);
+  color: #fff;
+}
+
+/* ---- Body ---- */
 .terminal-body {
-  padding: 14px 16px;
+  padding: 16px 18px;
   color: #c9d1d9;
   font-size: 12.5px;
-  max-height: 480px;
+  line-height: 1.6;
+  max-height: 520px;
   overflow-y: auto;
 }
-.meta {
+
+/* Meta grid */
+.meta-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 6px 16px;
-  color: #c9d1d9;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 5px 18px;
 }
-.meta .lbl {
+.meta-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.meta-item .lbl {
   color: #8b949e;
-  margin-right: 6px;
+  font-size: 11px;
+  min-width: 32px;
+  flex-shrink: 0;
 }
-.meta code {
+.meta-item .val {
+  color: #e6edf3;
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.meta-item code.val {
   color: #79c0ff;
   background: rgba(110, 118, 129, 0.2);
-  padding: 1px 4px;
-  border-radius: 3px;
+  padding: 0 5px;
+  border-radius: 4px;
+  font-size: 11.5px;
 }
+
+/* Divider */
 .divider {
   border: none;
-  border-top: 1px solid #30363d;
-  margin: 12px 0;
+  border-top: 1px solid #21262d;
+  margin: 14px 0;
 }
+
+/* Output */
 .line {
   margin: 4px 0;
+  font-size: 12px;
 }
-.line.info { color: #7ee787; }
-.line.error { color: #f85149; }
+.line.info  { color: #7ee787; }
+.line.error { color: #f85149; font-weight: 500; }
+.line.pulse  { animation: cf-pulse-text 1.6s ease-in-out infinite; }
+
+@keyframes cf-pulse-text {
+  0%, 100% { opacity: 0.9; }
+  50%      { opacity: 0.4; }
+}
+
 .code {
-  background: rgba(110, 118, 129, 0.1);
-  padding: 10px 12px;
-  border-radius: 4px;
+  background: rgba(110, 118, 129, 0.07);
+  padding: 12px 14px;
+  border-radius: 6px;
   white-space: pre-wrap;
   word-break: break-word;
-  margin: 4px 0 10px;
-  color: #c9d1d9;
+  margin: 6px 0 12px;
+  color: #d2d8e0;
+  font-size: 12px;
+  line-height: 1.5;
+  border-left: 2px solid #30363d;
 }
 .code.error-text {
   color: #ffa198;
+  border-left-color: #f85149;
 }
+
+/* Terminal 内部 scrollbar */
+.terminal-body::-webkit-scrollbar { width: 6px; }
+.terminal-body::-webkit-scrollbar-thumb {
+  background: rgba(48, 54, 61, 0.6);
+  border-radius: 999px;
+}
+.terminal-body::-webkit-scrollbar-thumb:hover { background: rgba(48, 54, 61, 0.8); }
 </style>

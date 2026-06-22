@@ -1,11 +1,22 @@
 /**
- * 时间/格式工具 — 后端时间字段统一为 ISO 字符串 (UTC), 前端按本地时区展示。
+ * 时间/格式工具 — 后端时间字段统一为 ISO 字符串 (UTC), 前端按 UTC+8 (北京时间) 展示。
+ *
+ * 通过 Intl.DateTimeFormat 或手动偏移 +8h 实现, 不依赖浏览器时区设置。
  */
+
+/** UTC ISO → Date (UTC+8 时区) */
+function toUTC8(iso: string): Date {
+  const d = new Date(iso)
+  if (isNaN(d.getTime())) return d
+  // 把 UTC 时刻转为 UTC+8 本地时刻的同名数字 (不依赖浏览器时区)
+  const utcMs = d.getTime()
+  return new Date(utcMs + 8 * 3600 * 1000)
+}
 
 export function formatDateTime(iso: string | null | undefined): string {
   if (!iso) return '-'
   try {
-    const d = new Date(iso)
+    const d = toUTC8(iso)
     if (isNaN(d.getTime())) return iso
     const pad = (n: number) => String(n).padStart(2, '0')
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(
