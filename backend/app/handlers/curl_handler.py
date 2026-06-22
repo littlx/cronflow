@@ -4,6 +4,12 @@ handler_config:
   url, method (GET|POST|...), headers (dict), data (dict|str|None),
   handler_type (PURE_JSON|NESTED_DATA|RAW_RESPONSE), target_collection, timeout?
 
+data 序列化策略 (按 Content-Type 决定):
+  - dict/list + Content-Type 含 'json'         → json=data (JSON body)
+  - dict/list + Content-Type 含 'form-urlencoded' → data=data (form-encoded)
+  - dict/list + 没指定 Content-Type            → json=data (默认 JSON)
+  - str/bytes                                   → content=data (原样, 默认 form 头)
+
 错误处理 (修复旧版问题):
 - 4xx: 视为业务错误, raise RuntimeError (终态失败, 不重试)
 - 5xx: raise httpx.HTTPStatusError (瞬态故障, 可重试)
@@ -25,6 +31,13 @@ from app.handlers.base import HandlerResult, TaskHandler
 logger = get_logger("handler.curl")
 
 
+def _get_content_type(headers: dict[str, str]) -> str:
+    for k, v in headers.items():
+        if k.lower() == "content-type":
+            return v.lower()
+    return ""
+
+
 def _process_response(handler_type: str, status_code: int, body):
     if handler_type == "RAW_RESPONSE":
         return {"_raw": body if isinstance(body, str) else str(body), "_status": status_code}
@@ -34,7 +47,8 @@ def _process_response(handler_type: str, status_code: int, body):
                 if key in body and isinstance(body[key], (list, dict)):
                     return body[key]
         return body
-    return {"_text": str(body)[:8000], "_status": status_code}
+    # 标量 (bool/int/str/None): 包一层保留类型, 不丢信息
+    return {"_value": body, "_status": status_code}
 
 
 class CurlHandler(TaskHandler):
@@ -49,7 +63,7 @@ class CurlHandler(TaskHandler):
         cfg = resolved.handler_config or {}
         url = cfg.get("url") or ""
         method = (cfg.get("method") or "GET").upper()
-        headers = cfg.get("headers") or {}
+        headers = dict(cfg.get("headers") or {})  # copy: 下方可能改写 Content-Type
         data = cfg.get("data")
         handler_type = cfg.get("handler_type") or "PURE_JSON"
         target_collection = cfg.get("target_collection") or "default"
@@ -60,13 +74,25 @@ class CurlHandler(TaskHandler):
             raise RuntimeError(f"curl task {resolved.ref} 缺少 url")
 
         req_kwargs: dict = {"method": method, "url": url, "headers": headers, "timeout": timeout}
-        if data and method != "GET":
+
+        if data is not None and method != "GET":
+            ct = _get_content_type(headers)
             if isinstance(data, (dict, list)):
-                req_kwargs["json"] = data
+                if "form-urlencoded" in ct:
+                    # form: httpx 会自动 urlencode + 保持 Content-Type
+                    req_kwargs["data"] = data
+                elif "json" in ct or not ct:
+                    # JSON: httpx 会自动 json.dumps + 设 Content-Type
+                    if not ct:
+                        headers["Content-Type"] = "application/json"
+                    req_kwargs["json"] = data
+                else:
+                    # 罕见: 自定义 Content-Type 但传了对象, 兜底走 JSON 序列化
+                    req_kwargs["json"] = data
             else:
-                # 字符串 body (form-urlencoded / raw); 若未显式声明 Content-Type, 默认 form
-                req_kwargs["content"] = str(data)
-                if not any(k.lower() == "content-type" for k in headers):
+                # 字符串/字节 body, 原样发送; 未声明 Content-Type 时默认 form
+                req_kwargs["content"] = data if isinstance(data, (bytes, bytearray)) else str(data)
+                if not ct:
                     headers["Content-Type"] = "application/x-www-form-urlencoded"
 
         async with httpx.AsyncClient(timeout=timeout) as client:
