@@ -10,7 +10,7 @@ import { onMounted } from 'vue'
 import { RouterLink, RouterView } from 'vue-router'
 import { useSocketConnected, useSocketListener } from '@/composables/useSocket'
 import { useStatsStore } from '@/stores/stats'
-import { Monitor, Cpu, Calendar, Document } from '@element-plus/icons-vue'
+import { Monitor, Cpu, Calendar, Document, Coin, Bell, DataLine } from '@element-plus/icons-vue'
 
 const stats = useStatsStore()
 const connected = useSocketConnected()
@@ -42,6 +42,18 @@ onMounted(() => {
       <RouterLink class="nav-item" to="/logs">
         <el-icon><Document /></el-icon>
         <span>执行日志</span>
+      </RouterLink>
+      <RouterLink class="nav-item" to="/cache">
+        <el-icon><Coin /></el-icon>
+        <span>缓存数据</span>
+      </RouterLink>
+      <RouterLink class="nav-item" to="/notifications">
+        <el-icon><Bell /></el-icon>
+        <span>通知</span>
+      </RouterLink>
+      <RouterLink class="nav-item" to="/metrics">
+        <el-icon><DataLine /></el-icon>
+        <span>指标</span>
       </RouterLink>
       <div style="flex:1"></div>
       <div style="padding:12px 16px;border-top:1px solid #30363d">

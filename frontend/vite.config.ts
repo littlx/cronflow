@@ -18,6 +18,10 @@ export default defineConfig({
         target: process.env.VITE_API_URL || 'http://localhost:8123',
         changeOrigin: true,
       },
+      '/metrics': {
+        target: process.env.VITE_API_URL || 'http://localhost:8123',
+        changeOrigin: true,
+      },
       '/socket.io': {
         target: process.env.VITE_API_URL || 'http://localhost:8123',
         changeOrigin: true,

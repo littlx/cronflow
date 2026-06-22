@@ -26,7 +26,7 @@ from app.core.config import settings
 from app.core.db import AsyncSessionLocal
 from app.core.eventbus import sio
 from app.core.logging import get_logger, setup_logging
-from app.routers import cache, health, logs, metrics, schedules, stats, tasks
+from app.routers import cache, health, logs, metrics, notifications, schedules, stats, tasks
 from app.services.scheduler import scheduler_loop
 
 logger = get_logger("main")
@@ -52,7 +52,11 @@ async def lifespan(app: FastAPI):
     from app.services.executor import init_executor
     init_executor(max_concurrency=settings.max_concurrency)
 
-    # 4. 启动调度循环 (后台 asyncio task)
+    # 4. 注册默认系统调度 (日志/缓存清理), 防止数据无限增长
+    from app.services.scheduler import ensure_default_schedules
+    await ensure_default_schedules()
+
+    # 5. 启动调度循环 (后台 asyncio task)
     scheduler_task = asyncio.create_task(scheduler_loop())
 
     logger.info("cronflow ready")
@@ -88,6 +92,7 @@ def create_fastapi() -> FastAPI:
     fastapi_app.include_router(stats.router)
     fastapi_app.include_router(schedules.router)
     fastapi_app.include_router(cache.router)
+    fastapi_app.include_router(notifications.router)
     fastapi_app.include_router(metrics.router)
 
     return fastapi_app

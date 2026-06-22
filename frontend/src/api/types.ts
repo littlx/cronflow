@@ -109,3 +109,34 @@ export interface StatsPayload {
   system: { cpu_usage: number; memory_usage: number }
   recent_logs: TaskLog[]
 }
+
+// ---- 通知 ----
+
+export interface NotificationConfig {
+  id: number
+  name: string
+  channel: string                   // 'webhook' | 未来 'sms' | 'email' | ...
+  config: Record<string, any>       // 渠道特定配置
+  events: string[]                  // ['task_failed', 'task_success', ...]
+  enabled: boolean
+  created_at?: string | null
+  updated_at?: string | null
+}
+
+export interface NotificationConfigCreate {
+  name: string
+  channel: string
+  config: Record<string, any>
+  events: string[]
+  enabled: boolean
+}
+
+export interface NotificationLog {
+  id: number
+  config_id: number
+  event: string
+  task_log_id: number | null
+  status: 'success' | 'failed' | string
+  message: string | null
+  created_at: string | null
+}

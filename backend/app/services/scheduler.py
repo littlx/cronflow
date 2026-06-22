@@ -2,6 +2,10 @@
 
 单进程 asyncio 循环, 每 N 秒扫表, 到点的投递执行。
 next_run_time 是 DB 真相源, 不依赖外部调度器。
+
+启动时:
+- ensure_default_schedules: 注册默认的日志/缓存清理调度 (若不存在),
+  防止数据无限增长 (修复旧版「TTL 任务存在但无调度」的问题)。
 """
 from __future__ import annotations
 
@@ -18,6 +22,54 @@ from app.services.executor import get_executor
 from app.services.schedule_service import compute_next_run
 
 logger = get_logger("scheduler")
+
+
+# 默认调度: 启动时自动注册, 名字唯一识别 (按 task_ref + 系统标签)
+_DEFAULT_SCHEDULES = [
+    {
+        "task_ref": "tasks.system_tasks.cleanup_old_logs",
+        "name": "[系统] 每日清理过期日志",
+        "trigger_type": "cron",
+        "trigger_args": {"minute": "0", "hour": "3"},  # 每日 03:00
+        "task_args": {"keep_days": settings.log_retention_days},
+    },
+    {
+        "task_ref": "tasks.system_tasks.cleanup_old_cache",
+        "name": "[系统] 每日清理过期缓存",
+        "trigger_type": "cron",
+        "trigger_args": {"minute": "30", "hour": "3"},  # 每日 03:30
+        "task_args": {"keep_days": settings.cache_retention_days},
+    },
+]
+
+
+async def ensure_default_schedules() -> None:
+    """启动时确保默认调度存在 (按 task_ref + name 幂等检查)。
+
+    用户可手动禁用/删除这些调度, 此函数不会复活已被用户删除的调度
+    (仅当 name 完全不存在时才创建)。
+    """
+    async with AsyncSessionLocal() as db:
+        for cfg in _DEFAULT_SCHEDULES:
+            existing = (
+                await db.execute(
+                    select(JobSchedule).where(JobSchedule.name == cfg["name"])
+                )
+            ).scalar_one_or_none()
+            if existing:
+                continue
+            sched = JobSchedule(
+                task_ref=cfg["task_ref"],
+                name=cfg["name"],
+                trigger_type=cfg["trigger_type"],
+                trigger_args=cfg["trigger_args"],
+                task_args=cfg["task_args"],
+                enabled=True,
+            )
+            sched.next_run_time = compute_next_run(sched)
+            db.add(sched)
+            logger.info("default schedule created", name=cfg["name"])
+        await db.commit()
 
 
 async def scheduler_loop() -> None:

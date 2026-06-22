@@ -26,6 +26,24 @@ const routes = [
     component: () => import('@/views/LogsView.vue'),
     meta: { title: '执行日志' },
   },
+  {
+    path: '/cache',
+    name: 'cache',
+    component: () => import('@/views/CacheView.vue'),
+    meta: { title: '缓存数据' },
+  },
+  {
+    path: '/notifications',
+    name: 'notifications',
+    component: () => import('@/views/NotificationsView.vue'),
+    meta: { title: '通知' },
+  },
+  {
+    path: '/metrics',
+    name: 'metrics',
+    component: () => import('@/views/MetricsView.vue'),
+    meta: { title: '指标' },
+  },
 ]
 
 const router = createRouter({

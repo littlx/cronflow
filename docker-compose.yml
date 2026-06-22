@@ -1,0 +1,34 @@
+services:
+  backend:
+    build: ./backend
+    container_name: cronflow-backend
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: "sqlite+aiosqlite:////data/cronflow.db"
+      # 内网 3 人, 可按需调整
+      MAX_CONCURRENCY: "8"
+      LOG_RETENTION_DAYS: "90"
+      CACHE_RETENTION_DAYS: "30"
+    volumes:
+      - cronflow-data:/data
+    ports:
+      # 仅暴露给内网调试; 生产前端 nginx 会代理
+      - "8123:8123"
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "http://localhost:8123/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  frontend:
+    build: ./frontend
+    container_name: cronflow-frontend
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "5173:80"
+
+volumes:
+  cronflow-data:

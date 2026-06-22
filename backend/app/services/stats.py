@@ -3,6 +3,9 @@
 无 Redis 计数器, 直接 SELECT count(*) GROUP BY status, 3 人量级毫秒级。
 启动时 reconciliation: 把 status='running' 且超时的日志标 failed,
 修复进程崩溃导致的 running 残留 (解决旧版计数器泄漏问题)。
+
+同时这里负责刷新 prometheus gauge (ACTIVE_SCHEDULES / REGISTERED_TASKS),
+每次 compute_stats 顺手调一次。
 """
 from __future__ import annotations
 
@@ -12,6 +15,7 @@ from sqlalchemy import desc, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.core.metrics import ACTIVE_SCHEDULES, REGISTERED_TASKS
 from app.models.schedule import JobSchedule
 from app.models.task_log import TaskLog
 
@@ -22,6 +26,15 @@ def _system_metrics() -> dict[str, float]:
         return {"cpu_usage": psutil.cpu_percent(), "memory_usage": psutil.virtual_memory().percent}
     except Exception:
         return {"cpu_usage": 0.0, "memory_usage": 0.0}
+
+
+def _refresh_gauges(total_tasks: int, active_count: int) -> None:
+    """顺手刷一下 prometheus gauge, 失败绝不影响主路径。"""
+    try:
+        REGISTERED_TASKS.set(total_tasks)
+        ACTIVE_SCHEDULES.set(active_count)
+    except Exception:
+        pass
 
 
 async def reconcile_running_logs(db: AsyncSession) -> int:
@@ -68,6 +81,9 @@ async def compute_stats(db: AsyncSession) -> dict:
     recent = (
         await db.execute(select(TaskLog).order_by(desc(TaskLog.started_at)).limit(10))
     ).scalars().all()
+
+    # 顺手刷 prometheus gauge
+    _refresh_gauges(total_tasks=len(TASKS), active_count=len(active))
 
     return {
         "total_tasks": len(TASKS),

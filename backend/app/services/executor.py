@@ -25,6 +25,7 @@ from app.core.config import settings
 from app.core.db import AsyncSessionLocal
 from app.core.eventbus import EVENT_CURL_CHANGED, EVENT_NEW_LOG, EVENT_STATS_UPDATE, emit
 from app.core.logging import get_logger
+from app.core.metrics import TASK_DURATION, TASK_TOTAL
 from app.handlers import get_handler
 from app.models.idempotency import IdempotencyKey
 from app.models.task_log import TaskLog
@@ -116,6 +117,9 @@ class Executor:
                 logger.info(
                     "task succeeded", task_ref=task_ref, attempt=attempt, duration=round(duration, 3)
                 )
+                self._record_metric(task_ref, "success", trigger_type, duration)
+                # 终态成功也触发通知 (订阅 task_success 的配置才会收到)
+                await self._notify("task_success", log_dict, task_ref)
                 return {"ok": True, "log_id": log_id, "attempt": attempt}
 
             except _RETRYABLE_EXCEPTIONS as e:
@@ -133,8 +137,9 @@ class Executor:
                         attempt=attempt, error=str(e),
                     )
                     await self._emit_stats()
-                    # 终态失败: 触发通知
-                    await self._notify_failure(log_dict)
+                    # 终态失败: 记指标 + 触发通知
+                    self._record_metric(task_ref, "failed", trigger_type, duration)
+                    await self._notify("task_failed", log_dict, task_ref)
                     return {
                         "ok": False, "log_id": log_id,
                         "error": "max retries exceeded", "attempt": attempt,
@@ -159,7 +164,8 @@ class Executor:
                     "task failed (business error)", task_ref=task_ref,
                     attempt=attempt, error=str(e),
                 )
-                await self._notify_failure(log_dict)
+                await self._notify("task_failed", log_dict, task_ref)
+                self._record_metric(task_ref, "failed", trigger_type, duration)
                 return {
                     "ok": False, "log_id": log_id,
                     "error": str(e), "attempt": attempt,
@@ -243,13 +249,22 @@ class Executor:
         except Exception:
             logger.exception("emit_stats failed")
 
-    async def _notify_failure(self, log_dict: dict) -> None:
-        """终态失败时触发通知器。首版 notifier 为空实现, 阶段3接入。"""
+    async def _notify(self, event: str, log_dict: dict, task_ref: str) -> None:
+        """终态时触发通知派发 (失败/成功都走这里, 由通知配置的 events 决定是否发)。"""
         try:
             from app.notifiers import notify_event
-            await notify_event("task_failed", {"log": log_dict})
+            await notify_event(event, {"log": log_dict, "task_ref": task_ref})
         except Exception:
             logger.exception("notify failed")
+
+    @staticmethod
+    def _record_metric(task_ref: str, status: str, trigger_type: str, duration: float) -> None:
+        """终态时记一笔 prometheus 指标 (counter + histogram)。失败绝不影响主路径。"""
+        try:
+            TASK_TOTAL.labels(task_ref=task_ref, status=status, trigger_type=trigger_type).inc()
+            TASK_DURATION.labels(task_ref=task_ref).observe(duration)
+        except Exception:
+            pass
 
 
 # 全局单例, lifespan 时初始化

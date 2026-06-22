@@ -1,3 +1,9 @@
+from app.schemas.notification import (
+    NotificationConfigCreate,
+    NotificationConfigOut,
+    NotificationConfigUpdate,
+    NotificationLogOut,
+)
 from app.schemas.schedule import ScheduleCreate, ScheduleOut, ScheduleUpdate
 from app.schemas.task import (
     CurlHandlerConfig,
@@ -12,4 +18,6 @@ __all__ = [
     "ScheduleCreate", "ScheduleOut", "ScheduleUpdate",
     "CurlHandlerConfig", "CurlTaskCreate", "CurlTaskUpdate",
     "TaskOut", "TaskParameter", "TriggerTaskIn",
+    "NotificationConfigCreate", "NotificationConfigOut",
+    "NotificationConfigUpdate", "NotificationLogOut",
 ]
