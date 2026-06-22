@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     max_concurrency: int = 8          # executor 协程池并发上限
     task_retry_max: int = 3           # 最大重试次数 (瞬态故障)
     task_retry_backoff: float = 2.0   # 退避基数 (秒), 实际等待 = backoff * 2^(attempt-1)
-    task_default_timeout: int = 60    # handler 默认超时 (秒)
+    task_default_timeout: int = 300   # handler 默认超时 (秒), 5 分钟
     log_retention_days: int = 90      # 日志保留天数
     cache_retention_days: int = 30    # 缓存保留天数
 

@@ -262,7 +262,7 @@ NOTIFIERS["sms"] = SmsNotifier()
 | `MAX_CONCURRENCY` | 8 | executor 协程池并发上限 |
 | `TASK_RETRY_MAX` | 3 | 瞬态故障最大重试次数 |
 | `TASK_RETRY_BACKOFF` | 2.0 | 退避基数, 实际等待 = base * 2^(attempt-1) |
-| `TASK_DEFAULT_TIMEOUT` | 60 | handler 默认超时(秒) |
+| `TASK_DEFAULT_TIMEOUT` | 300 | handler 默认超时(秒), 5 分钟 |
 | `LOG_RETENTION_DAYS` | 90 | task_logs 保留天数 |
 | `CACHE_RETENTION_DAYS` | 30 | crawled_data_cache 保留天数 |
 | `SCHEDULER_TICK_SECONDS` | 5 | 调度循环扫描间隔 |
