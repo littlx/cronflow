@@ -1,16 +1,15 @@
 """定时调度表 — task_ref 是字符串:
 - python kind: 形如 'tasks.system_tasks.system_health_check' (注册表 id)
-- curl  kind: 形如 'curl:<uuid>' 或纯 uuid (引用 tasks 表的 id)
+- curl  kind: 形如 'curl:<uuid>' (引用 tasks 表的 id)
 
-调度层不再分叉 task_type, 由 task_ref 解析为对应 kind 后分派。
-next_run_time / redbeat_key 由 redbeat 自身维护, 不在 DB 双写。
+next_run_time 是 DB 真相源, 调度循环扫表 WHERE next_run_time <= now()。
+更新/启停调度时由 schedule_service 重算 next_run_time。
 """
 from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from sqlalchemy import Boolean, DateTime, Index, Integer, String
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy import Boolean, DateTime, Index, Integer, JSON, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base
@@ -28,22 +27,25 @@ class JobSchedule(Base):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     # 'interval' | 'cron'
     trigger_type: Mapped[str] = mapped_column(String(50), nullable=False)
-    trigger_args: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    trigger_args: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     # python 任务的 kwargs; curl 不用 (handler_config 已含全部参数)
-    task_args: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    task_args: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    # 调度真相源: 到点由 scheduler 更新为下一次时间
+    next_run_time: Mapped[datetime | None] = mapped_column(
+        DateTime, nullable=True, index=True
+    )
 
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=_utcnow, nullable=False
+        DateTime, default=_utcnow, nullable=False
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=_utcnow, onupdate=_utcnow, nullable=False
+        DateTime, default=_utcnow, onupdate=_utcnow, nullable=False
     )
 
     __table_args__ = (Index("ix_schedules_enabled", "enabled"),)
 
     def to_dict(self) -> dict:
-        # next_run_time 由 routers 从 redbeat 实时填充, 不在此返回
         return {
             "id": self.id,
             "task_ref": self.task_ref,
@@ -52,6 +54,7 @@ class JobSchedule(Base):
             "trigger_args": self.trigger_args or {},
             "task_args": self.task_args or {},
             "enabled": self.enabled,
+            "next_run_time": self.next_run_time.isoformat() if self.next_run_time else None,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }

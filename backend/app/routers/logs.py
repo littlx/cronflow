@@ -24,7 +24,6 @@ def _parse_iso(s: str | None) -> datetime | None:
     if not s:
         return None
     try:
-        # 允许 'Z' 结尾
         s = s.replace("Z", "+00:00")
         dt = datetime.fromisoformat(s)
         if dt.tzinfo is None:
@@ -51,9 +50,6 @@ async def get_logs(
 
     after_dt = _parse_iso(started_after)
     before_dt = _parse_iso(started_before)
-
-    for stmt in (base, count_base):
-        pass  # placeholder for type checker
 
     def _where(stmt):
         if task_ref:
@@ -87,15 +83,13 @@ async def clear_logs(
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
 ):
-    """清空所有日志, 同时重置 stats 计数器, 避免出现「日志为空但 total/success 非 0」的不一致。"""
+    """清空所有日志。"""
     await db.execute(delete(TaskLog))
     await db.commit()
-    # Redis 计数器与日志表是两份真相; 清空日志必须同步清零, 否则 dashboard 仍显示历史值
-    from app.services.stats import compute_stats, reset_counters
-    reset_counters()
     # 主动广播一次空 stats, 让前端立刻刷新
     try:
         from app.core.eventbus import EVENT_STATS_UPDATE, emit
+        from app.services.stats import compute_stats
         await emit(EVENT_STATS_UPDATE, await compute_stats(db))
     except Exception:
         pass

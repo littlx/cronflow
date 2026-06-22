@@ -1,9 +1,9 @@
-"""任务执行日志表。首版普通表 + TTL 清理任务; 按月分区留为后续迁移点。"""
+"""任务执行日志表。普通表 + TTL 清理任务; 按月分区留为后续迁移点。"""
 from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, Float, Integer, String, Text
+from sqlalchemy import DateTime, Float, Index, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base
@@ -29,14 +29,21 @@ class TaskLog(Base):
     attempt: Mapped[int] = mapped_column(Integer, nullable=False, default=1, server_default="1")
 
     started_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=_utcnow, nullable=False
+        DateTime, default=_utcnow, nullable=False
     )
     finished_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
+        DateTime, nullable=True
     )
     duration: Mapped[float | None] = mapped_column(Float, nullable=True)  # 秒
     result: Mapped[str | None] = mapped_column(Text, nullable=True)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    __table_args__ = (
+        Index("ix_task_logs_task_ref", "task_ref"),
+        Index("ix_task_logs_schedule_id", "schedule_id"),
+        Index("ix_task_logs_status", "status"),
+        Index("ix_task_logs_started_at", "started_at"),
+    )
 
     def to_dict(self) -> dict:
         return {

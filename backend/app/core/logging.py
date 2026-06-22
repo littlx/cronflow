@@ -1,4 +1,8 @@
-"""结构化日志 (structlog) 配置。"""
+"""结构化日志 (structlog) 配置。
+
+全项目统一用 get_logger() 取 logger, 不再用 print。
+单进程架构下日志出口唯一, 配置一次即可。
+"""
 from __future__ import annotations
 
 import logging

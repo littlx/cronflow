@@ -1,9 +1,11 @@
-"""统一任务路由 — python (只读, 来自注册表) + curl (CRUD, 入库)。
+"""统一任务路由 — python (只读, 来自注册表) + curl (CRUD, 入库) + 触发。
 
 路由顺序约定: 所有具体路径 (`/curl`, `/curl/{id}`, `/trigger`) 必须排在
 通配 `GET /{ref:path}` 之前, 否则后者会吞掉所有同方法子路径。
 """
 from __future__ import annotations
+
+import asyncio
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,7 +19,8 @@ from app.schemas.task import (
     TriggerTaskIn,
 )
 from app.services import task_service
-from app.services.ref_resolver import resolve_ref_async
+from app.services.executor import get_executor
+from app.services.ref_resolver import resolve_ref
 
 router = APIRouter(prefix="/api/tasks", tags=["tasks"])
 
@@ -74,8 +77,8 @@ async def trigger_task(
     db: AsyncSession = Depends(get_db),
     user: CurrentUser = Depends(get_current_user),
 ):
-    """立即触发任意 kind 的任务 (异步, 经 Celery 执行)。"""
-    resolved = await resolve_ref_async(db, payload.task_ref)
+    """立即触发任意 kind 的任务 (异步, 经 executor 协程池执行)。"""
+    resolved = await resolve_ref(db, payload.task_ref)
     if not resolved:
         raise HTTPException(status_code=404, detail=f"任务不存在: {payload.task_ref}")
 
@@ -85,22 +88,14 @@ async def trigger_task(
     if errors:
         raise HTTPException(status_code=422, detail={"errors": errors})
 
-    from worker.celery_app import celery_app
-    send_kwargs: dict = {
-        "kwargs": {
-            "task_ref": payload.task_ref,
-            "trigger_type": "manual",
-            "task_args": payload.task_args,
-        },
-    }
-    # 任务级路由/优先级透传给 celery (broker 支持时生效)
-    if resolved.queue:
-        send_kwargs["queue"] = resolved.queue
-    if resolved.priority is not None:
-        send_kwargs["priority"] = int(resolved.priority)
-
-    result = celery_app.send_task("worker.run_task", **send_kwargs)
-    return {"ok": True, "celery_id": result.id, "task_ref": payload.task_ref, "kind": resolved.kind}
+    # 非阻塞投递到 executor 协程池
+    executor = get_executor()
+    asyncio.create_task(executor.run(
+        task_ref=payload.task_ref,
+        trigger_type="manual",
+        task_args=payload.task_args,
+    ))
+    return {"ok": True, "task_ref": payload.task_ref, "kind": resolved.kind}
 
 
 # ---- 通配兜底, 放最后 ----

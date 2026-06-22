@@ -1,39 +1,69 @@
-"""CronFlow v2 FastAPI 入口。
+"""CronFlow FastAPI 入口。
+
+单进程架构: API + scheduler + executor + eventbus 全在一个进程。
+lifespan 启动顺序:
+1. setup_logging
+2. discover_tasks (注册 @register_task 函数)
+3. reconcile_running_logs (修复崩溃残留的 running 状态)
+4. init_executor (创建协程池单例)
+5. scheduler_loop (asyncio task, 后台调度)
 
 挂载:
 - REST API 路由 (/api/*)
 - SocketIO ASGI app (/socket.io)
-- Prometheus metrics (/metrics) — 阶段6接入
+- Prometheus metrics (/metrics)
 """
 from __future__ import annotations
 
+import asyncio
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
+from app.core.db import AsyncSessionLocal
 from app.core.eventbus import sio_app
-from app.core.logging import setup_logging
+from app.core.logging import get_logger, setup_logging
 from app.routers import cache, health, logs, metrics, schedules, stats, tasks
+from app.services.scheduler import scheduler_loop
+
+logger = get_logger("main")
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     setup_logging()
-    # 启动: 触发任务发现 (注册 @register_task 的函数)
-    from app.registry.discover import discover_tasks
+    logger.info("starting cronflow", app=settings.app_name)
 
+    # 1. 触发任务发现 (注册 @register_task 的函数)
+    from app.registry.discover import discover_tasks
     discover_tasks()
 
-    # prometheus 注册数 gauge 初始化 (每次 stats compute 也会刷新, 这里给个启动值)
-    try:
-        from app.core.metrics import REGISTERED_TASKS
-        from app.registry import TASKS
-        REGISTERED_TASKS.set(len(TASKS))
-    except Exception:
-        pass
+    # 2. 启动 reconciliation: 修复崩溃残留的 running 状态
+    from app.services.stats import reconcile_running_logs
+    async with AsyncSessionLocal() as db:
+        fixed = await reconcile_running_logs(db)
+        if fixed:
+            logger.info("reconciled running logs", fixed=fixed)
+
+    # 3. 初始化 executor (协程池单例)
+    from app.services.executor import init_executor
+    init_executor(max_concurrency=settings.max_concurrency)
+
+    # 4. 启动调度循环 (后台 asyncio task)
+    scheduler_task = asyncio.create_task(scheduler_loop())
+
+    logger.info("cronflow ready")
     yield
+
+    # 关闭: 取消调度循环
+    scheduler_task.cancel()
+    try:
+        await scheduler_task
+    except asyncio.CancelledError:
+        pass
+    logger.info("cronflow stopped")
 
 
 def create_app() -> FastAPI:

@@ -2,7 +2,7 @@
 
 python 任务: 只读, 来自 @register_task 注册表。
 curl   任务: 表单创建, 入 tasks 表 (kind='curl')。
-返回视图统一为 {ref, kind, name, description, handler_config, parameters, queue, priority}。
+返回视图统一为 {ref, kind, name, description, handler_config, parameters}。
 """
 from __future__ import annotations
 
@@ -25,23 +25,18 @@ def _python_view(t: dict) -> dict:
         "description": t["description"],
         "handler_config": {},
         "parameters": t["parameters"],
-        "queue": t.get("queue"),
-        "priority": t.get("priority"),
         "module": t.get("module"),
     }
 
 
 def _curl_view(row: Task) -> dict:
-    cfg = row.handler_config or {}
     return {
         "ref": make_curl_ref(row.id),
         "kind": row.kind,
         "name": row.name,
         "description": row.description or "",
-        "handler_config": cfg,
+        "handler_config": row.handler_config or {},
         "parameters": [],
-        "queue": cfg.get("queue") if isinstance(cfg, dict) else None,
-        "priority": cfg.get("priority") if isinstance(cfg, dict) else None,
         "id": row.id,
         "created_at": row.created_at.isoformat() if row.created_at else None,
         "updated_at": row.updated_at.isoformat() if row.updated_at else None,
@@ -63,8 +58,8 @@ async def list_all_tasks(db: AsyncSession, kind: str | None = None) -> list[dict
 
 
 async def get_task_view(db: AsyncSession, ref: str) -> dict | None:
-    from app.services.ref_resolver import resolve_ref_async
-    r = await resolve_ref_async(db, ref)
+    from app.services.ref_resolver import resolve_ref
+    r = await resolve_ref(db, ref)
     if not r:
         return None
     if r.kind == "python":
@@ -72,7 +67,6 @@ async def get_task_view(db: AsyncSession, ref: str) -> dict | None:
             "ref": r.ref, "kind": "python", "name": r.name,
             "description": r.description, "handler_config": {},
             "parameters": r.parameters,
-            "queue": r.queue, "priority": r.priority,
         }
     # curl
     row = await db.get(Task, ref[len(CURL_PREFIX):]) if ref.startswith(CURL_PREFIX) else None
@@ -80,9 +74,7 @@ async def get_task_view(db: AsyncSession, ref: str) -> dict | None:
 
 
 async def create_curl_task(db: AsyncSession, payload: dict) -> dict:
-    """创建一个 curl 任务 (kind='curl')。
-    payload: {name, description?, handler_config: {url, method, headers, data, handler_type, target_collection, queue?, priority?}}
-    """
+    """创建一个 curl 任务 (kind='curl')。"""
     task = Task(
         id=uuid.uuid4().hex,
         kind="curl",
@@ -112,9 +104,19 @@ async def update_curl_task(db: AsyncSession, task_id: str, payload: dict) -> dic
 
 
 async def delete_curl_task(db: AsyncSession, task_id: str) -> bool:
+    """删除 curl 任务, 同时级联清理引用它的 schedules (修复旧版幽灵调度问题)。"""
     row = await db.get(Task, task_id)
     if not row:
         return False
+
+    # 级联清理: 删除引用此 task 的 schedules
+    from app.models.schedule import JobSchedule
+    ref = make_curl_ref(task_id)
+    schedules = (
+        await db.execute(select(JobSchedule).where(JobSchedule.task_ref == ref))
+    ).scalars().all()
+    for sched in schedules:
+        await db.delete(sched)
     await db.delete(row)
     await db.commit()
     return True
@@ -126,9 +128,6 @@ def validate_task_args(resolved: ResolvedTask, task_args: dict[str, Any]) -> lis
     """对照 resolved.parameters 检查 task_args, 返回错误描述列表 (空表示通过)。
 
     仅校验 python 任务 — curl 任务参数从 handler_config 取, 不依赖 task_args。
-    校验项:
-    - required 参数缺失
-    - 类型与签名不一致 (int/float/bool/str)
     """
     errors: list[str] = []
     if resolved.kind != "python":

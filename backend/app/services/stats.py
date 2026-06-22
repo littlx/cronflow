@@ -1,28 +1,20 @@
-"""stats 物化服务 — Redis 计数器 (首版轻量方案)。
+"""stats 服务 — SQLite count + 启动 reconciliation。
 
-计数器: total / success / failed / running。由 worker 在执行前后 INCR/DECR 维护,
-stats 接口直接读 Redis + 取最近 10 条日志, 替代旧版每 5 秒全表 count。
-
-本模块同时承担 prometheus gauge 同步刷新职责 (ACTIVE_SCHEDULES / REGISTERED_TASKS)。
-异步 (compute_stats) 与同步 (compute_stats_sync) 共享 _assemble_payload, 防止两边漂移。
+无 Redis 计数器, 直接 SELECT count(*) GROUP BY status, 3 人量级毫秒级。
+启动时 reconciliation: 把 status='running' 且超时的日志标 failed,
+修复进程崩溃导致的 running 残留 (解决旧版计数器泄漏问题)。
 """
 from __future__ import annotations
 
-from typing import Any
+from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import desc, select
+from sqlalchemy import desc, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import Session
 
-from app.core.redis import async_redis, get_redis_stats_key, sync_redis
+from app.core.config import settings
 from app.models.schedule import JobSchedule
 from app.models.task_log import TaskLog
 
-
-_METRICS = ("total", "success", "failed", "running")
-
-
-# ---- 共享组装 ----
 
 def _system_metrics() -> dict[str, float]:
     try:
@@ -32,119 +24,60 @@ def _system_metrics() -> dict[str, float]:
         return {"cpu_usage": 0.0, "memory_usage": 0.0}
 
 
-def _refresh_gauges(*, total_tasks: int, active_count: int) -> None:
-    """每次组装顺手刷一下 prometheus gauge, 失败不影响主路径。"""
-    try:
-        from app.core.metrics import ACTIVE_SCHEDULES, REGISTERED_TASKS
-        REGISTERED_TASKS.set(total_tasks)
-        ACTIVE_SCHEDULES.set(active_count)
-    except Exception:
-        pass
+async def reconcile_running_logs(db: AsyncSession) -> int:
+    """启动 reconciliation: 把超时的 running 日志标 failed。
+
+    判定: started_at 超过 task_default_timeout * (retry_max+1) 秒仍为 running,
+    视为进程崩溃残留, 标记 failed。
+    返回修复的行数。
+    """
+    threshold = datetime.now(timezone.utc) - timedelta(
+        seconds=settings.task_default_timeout * (settings.task_retry_max + 1) * 2
+    )
+    result = await db.execute(
+        update(TaskLog)
+        .where(TaskLog.status == "running")
+        .where(TaskLog.started_at < threshold)
+        .values(status="failed", error="reconciled: process crash (running timeout)", finished_at=datetime.now(timezone.utc))
+    )
+    await db.commit()
+    return result.rowcount or 0
 
 
-def _assemble_payload(
-    *,
-    schedules: list,
-    recent_logs: list[dict],
-    counters: dict[str, int],
-    total_tasks: int,
-    system: dict[str, float],
-) -> dict:
-    active = [s for s in schedules if s.enabled]
-    success = counters["success"]
-    failed = counters["failed"]
+async def compute_stats(db: AsyncSession) -> dict:
+    """组装看板数据: 计数器 + 调度数 + 最近日志 + 系统指标。"""
+    from app.registry import TASKS
+
+    # 计数器: GROUP BY status, 一次查询
+    counts_rows = await db.execute(
+        select(TaskLog.status, func.count(TaskLog.id)).group_by(TaskLog.status)
+    )
+    counts = {row[0]: row[1] for row in counts_rows}
+    total = sum(counts.values())
+    success = counts.get("success", 0)
+    failed = counts.get("failed", 0)
+    running = counts.get("running", 0)
     finished = success + failed
     rate = round((success / finished) * 100, 2) if finished > 0 else 0.0
 
-    _refresh_gauges(total_tasks=total_tasks, active_count=len(active))
+    # 调度数
+    schedules = (await db.execute(select(JobSchedule))).scalars().all()
+    active = [s for s in schedules if s.enabled]
+
+    # 最近 10 条日志
+    recent = (
+        await db.execute(select(TaskLog).order_by(desc(TaskLog.started_at)).limit(10))
+    ).scalars().all()
 
     return {
-        "total_tasks": total_tasks,
+        "total_tasks": len(TASKS),
         "total_schedules": len(schedules),
         "active_schedules": len(active),
-        "total_runs": counters["total"],
+        "total_runs": total,
         "success_runs": success,
         "failed_runs": failed,
-        "running_runs": counters["running"],
+        "running_runs": running,
         "success_rate": rate,
-        "system": system,
-        "recent_logs": recent_logs,
+        "system": _system_metrics(),
+        "recent_logs": [r.to_dict() for r in recent],
     }
-
-
-def _read_counters_sync() -> dict[str, int]:
-    return {m: int(sync_redis.get(get_redis_stats_key(m)) or 0) for m in _METRICS}
-
-
-async def _read_counters_async() -> dict[str, int]:
-    keys = [get_redis_stats_key(m) for m in _METRICS]
-    vals = await async_redis.mget(*keys)
-    return dict(zip(_METRICS, [int(v or 0) for v in vals]))
-
-
-# ---- 入口 ----
-
-async def compute_stats(db: AsyncSession) -> dict:
-    """API / 异步路径: 组装看板数据。"""
-    from app.registry import TASKS
-
-    schedules = (await db.execute(select(JobSchedule))).scalars().all()
-    recent = (await db.execute(
-        select(TaskLog).order_by(desc(TaskLog.started_at)).limit(10)
-    )).scalars().all()
-    return _assemble_payload(
-        schedules=list(schedules),
-        recent_logs=[r.to_dict() for r in recent],
-        counters=await _read_counters_async(),
-        total_tasks=len(TASKS),
-        system=_system_metrics(),
-    )
-
-
-def compute_stats_sync(session: Session) -> dict:
-    """worker / 同步路径: 与 compute_stats 完全一致的载荷。"""
-    from app.registry import TASKS
-
-    schedules = session.execute(select(JobSchedule)).scalars().all()
-    recent = session.execute(
-        select(TaskLog).order_by(desc(TaskLog.started_at)).limit(10)
-    ).scalars().all()
-    return _assemble_payload(
-        schedules=list(schedules),
-        recent_logs=[r.to_dict() for r in recent],
-        counters=_read_counters_sync(),
-        total_tasks=len(TASKS),
-        system=_system_metrics(),
-    )
-
-
-# ---- worker 同步维护计数器 (worker 进程用同步 redis) ----
-
-def _incr(metric: str, n: int = 1) -> None:
-    sync_redis.incrby(get_redis_stats_key(metric), n)
-
-
-def _decr(metric: str, n: int = 1) -> None:
-    sync_redis.decrby(get_redis_stats_key(metric), n)
-
-
-def mark_running() -> None:
-    _incr("running")
-    _incr("total")
-
-
-def mark_success() -> None:
-    _decr("running")
-    _incr("success")
-
-
-def mark_failed() -> None:
-    _decr("running")
-    _incr("failed")
-
-
-def reset_counters() -> dict:
-    """重置计数器 (调试/清空日志)。"""
-    for m in _METRICS:
-        sync_redis.set(get_redis_stats_key(m), 0)
-    return {"reset": True}
