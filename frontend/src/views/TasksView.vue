@@ -324,7 +324,7 @@ onMounted(() => tasks.load())
         type="textarea"
         :rows="10"
         :placeholder="curlPlaceholder"
-        style="font-family: 'SF Mono', Menlo, monospace; font-size:12px"
+        style="font-family: 'Geist Mono', 'JetBrains Mono', 'SF Mono', Menlo, monospace; font-size:12px"
       />
       <div style="color:var(--el-text-color-secondary);font-size:12px;margin-top:8px">
         支持: -X / -H / -d / --data-raw / --data-binary / --json / -A / -b / -e / -u / --compressed 等。
@@ -341,7 +341,7 @@ onMounted(() => tasks.load())
       <div v-else style="max-height:480px;overflow:auto">
         <pre
           v-for="d in previewData" :key="d.id"
-          style="background:#0d1117;color:#c9d1d9;padding:10px;border-radius:6px;margin-bottom:8px;font-size:12px;white-space:pre-wrap"
+          style="background:#000;color:#ededed;border:1px solid #1a1a1a;padding:12px 14px;border-radius:6px;margin-bottom:8px;font-family:'Geist Mono','JetBrains Mono','SF Mono',Menlo,monospace;font-size:12px;line-height:1.55;white-space:pre-wrap"
         >{{ JSON.stringify(d.document, null, 2) }}</pre>
       </div>
     </el-dialog>

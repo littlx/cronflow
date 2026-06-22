@@ -1,13 +1,10 @@
 <!--
-  LogTerminal — 日志详情弹窗内的终端式展示。
-  Dashboard 与 LogsView 共用, 消除旧版的重复代码。
+  LogTerminal — Vercel-style 日志详情。
 
-  props:
-    - log: TaskLog 对象 (null 时不渲染)
-
-  视觉:
-    - 精致的终端式窗口 (macOS traffic light + 渐变标题栏)
-    - 结构化 meta 信息 + 语法着色输出
+  设计:
+  - 纯黑底 (#000) + 极简标题栏 (无 macOS dots, 取代为状态点 + 标题 + 复制)
+  - meta 信息排成两列, 用 "Label  Value" 单色小字
+  - 输出区无装饰边条, 仅靠间距与色彩分层
 -->
 <script setup lang="ts">
 import { ElMessage } from 'element-plus'
@@ -48,70 +45,46 @@ async function copy() {
 </script>
 
 <template>
-  <div v-if="log" class="terminal">
-    <!-- 标题栏 -->
-    <div class="terminal-header">
-      <div class="dots">
-        <span class="dot red"></span>
-        <span class="dot yellow"></span>
-        <span class="dot green"></span>
-      </div>
-      <div class="terminal-title">log #{{ log.id }} · attempt {{ log.attempt }}</div>
-      <el-button size="small" class="copy-btn" @click="copy">复制日志</el-button>
+  <div v-if="log" class="term">
+    <div class="term-head">
+      <span :class="['status-dot', log.status]"></span>
+      <span class="term-title">
+        <span class="muted">log</span>
+        <span>#{{ log.id }}</span>
+        <span class="sep">·</span>
+        <span class="muted">attempt</span>
+        <span>{{ log.attempt }}</span>
+      </span>
+      <button class="copy" @click="copy">复制</button>
     </div>
 
-    <!-- 内容区 -->
-    <div class="terminal-body">
+    <div class="term-body">
       <div class="meta-grid">
-        <div class="meta-item">
-          <span class="lbl">任务</span>
-          <span class="val">{{ log.task_name }}</span>
-        </div>
-        <div class="meta-item">
-          <span class="lbl">ref</span>
-          <code class="val">{{ log.task_ref }}</code>
-        </div>
-        <div class="meta-item">
-          <span class="lbl">状态</span>
-          <span class="val"><StatusTag :status="log.status" /></span>
-        </div>
-        <div class="meta-item">
-          <span class="lbl">触发</span>
-          <span class="val">{{ triggerLabel(log.trigger_type) }}</span>
-        </div>
-        <div class="meta-item">
-          <span class="lbl">尝试</span>
-          <span class="val">第 {{ log.attempt }} 次</span>
-        </div>
-        <div class="meta-item">
-          <span class="lbl">耗时</span>
-          <span class="val">{{ formatDuration(log.duration) }}</span>
-        </div>
-        <div class="meta-item">
-          <span class="lbl">开始</span>
-          <span class="val">{{ formatDateTime(log.started_at) }}</span>
-        </div>
-        <div class="meta-item">
-          <span class="lbl">结束</span>
-          <span class="val">{{ formatDateTime(log.finished_at) }}</span>
-        </div>
+        <div class="meta-row"><span class="lbl">任务</span><span class="val">{{ log.task_name }}</span></div>
+        <div class="meta-row"><span class="lbl">ref</span><code class="val">{{ log.task_ref }}</code></div>
+        <div class="meta-row"><span class="lbl">状态</span><span class="val"><StatusTag :status="log.status" /></span></div>
+        <div class="meta-row"><span class="lbl">触发</span><span class="val">{{ triggerLabel(log.trigger_type) }}</span></div>
+        <div class="meta-row"><span class="lbl">尝试</span><span class="val">第 {{ log.attempt }} 次</span></div>
+        <div class="meta-row"><span class="lbl">耗时</span><span class="val">{{ formatDuration(log.duration) }}</span></div>
+        <div class="meta-row"><span class="lbl">开始</span><span class="val">{{ formatDateTime(log.started_at) }}</span></div>
+        <div class="meta-row"><span class="lbl">结束</span><span class="val">{{ formatDateTime(log.finished_at) }}</span></div>
       </div>
 
-      <div class="divider"></div>
+      <div class="hr"></div>
 
       <div class="output">
         <template v-if="log.status === 'success'">
-          <div class="line info">→ Task executed successfully</div>
+          <div class="line ok">✓ Task executed successfully</div>
           <pre class="code">{{ formatContent(log.result) }}</pre>
         </template>
         <template v-else-if="log.status === 'running'">
-          <div class="line info pulse">⏳ Running — task is still in progress...</div>
+          <div class="line ok pulse">→ Running — task is still in progress</div>
         </template>
         <template v-else>
-          <div class="line error">✗ Task execution failed</div>
-          <pre class="code error-text">{{ log.error }}</pre>
+          <div class="line err">✗ Task execution failed</div>
+          <pre class="code err-text">{{ log.error }}</pre>
           <template v-if="log.result">
-            <div class="line info">→ Partial result</div>
+            <div class="line ok">→ Partial result</div>
             <pre class="code">{{ formatContent(log.result) }}</pre>
           </template>
         </template>
@@ -121,148 +94,148 @@ async function copy() {
 </template>
 
 <style scoped>
-/* ---- Terminal container ---- */
-.terminal {
-  background: #0d1117;
-  border-radius: var(--cf-radius-lg);
+.term {
+  background: #000;
+  border: 1px solid #1a1a1a;
+  border-radius: 8px;
   overflow: hidden;
-  font-family: 'JetBrains Mono', 'SF Mono', Menlo, Monaco, 'Courier New', monospace;
-  border: 1px solid rgba(48, 54, 61, 0.6);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25), inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+  font-family: 'Geist Mono', 'JetBrains Mono', 'SF Mono', Menlo, Monaco, monospace;
 }
 
-/* ---- Header ---- */
-.terminal-header {
+.term-head {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 10px 16px;
-  background:
-    linear-gradient(180deg, #1c2333 0%, #161b2a 100%);
-  border-bottom: 1px solid #30363d;
+  gap: 10px;
+  padding: 10px 14px;
+  background: #0a0a0a;
+  border-bottom: 1px solid #1a1a1a;
 }
-.dots {
-  display: flex;
-  gap: 7px;
-  flex-shrink: 0;
-}
-.dot {
-  width: 11px;
-  height: 11px;
+.status-dot {
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
-  transition: opacity 0.15s;
-}
-.dot.red    { background: #ff5f56; }
-.dot.yellow { background: #ffbd2e; }
-.dot.green  { background: #27c93f; }
-
-.terminal-title {
-  flex: 1;
-  font-size: 11.5px;
-  color: #8b949e;
-  text-align: center;
-  letter-spacing: 0.3px;
-}
-.copy-btn {
   flex-shrink: 0;
-  background: rgba(110, 118, 129, 0.15);
-  color: #c9d1d9;
-  border: 1px solid rgba(110, 118, 129, 0.25);
-  border-radius: 6px;
-  font-family: inherit;
-  height: 26px;
-  font-size: 11px;
+  background: #666;
 }
-.copy-btn:hover {
-  background: rgba(110, 118, 129, 0.25);
-  color: #fff;
+.status-dot.success { background: #0070f3; box-shadow: 0 0 0 3px rgba(0, 112, 243, 0.18); }
+.status-dot.failed  { background: #e00; box-shadow: 0 0 0 3px rgba(238, 0, 0, 0.18); }
+.status-dot.running { background: #f5a623; box-shadow: 0 0 0 3px rgba(245, 166, 35, 0.18); animation: dot-pulse 1.4s ease-in-out infinite; }
+@keyframes dot-pulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.4; }
 }
 
-/* ---- Body ---- */
-.terminal-body {
-  padding: 16px 18px;
-  color: #c9d1d9;
-  font-size: 12.5px;
-  line-height: 1.6;
-  max-height: 520px;
-  overflow-y: auto;
-}
-
-/* Meta grid */
-.meta-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 5px 18px;
-}
-.meta-item {
+.term-title {
+  flex: 1;
+  font-size: 12px;
+  color: #ededed;
   display: flex;
   align-items: center;
   gap: 6px;
 }
-.meta-item .lbl {
-  color: #8b949e;
+.term-title .muted { color: #666; }
+.term-title .sep { color: #333; margin: 0 2px; }
+
+.copy {
+  background: transparent;
+  color: #888;
+  border: 1px solid #1a1a1a;
+  border-radius: 5px;
+  padding: 4px 9px;
   font-size: 11px;
-  min-width: 32px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 150ms;
+}
+.copy:hover {
+  color: #fff;
+  border-color: #333;
+  background: #111;
+}
+
+.term-body {
+  padding: 16px 18px;
+  color: #ededed;
+  font-size: 12.5px;
+  line-height: 1.65;
+  max-height: 520px;
+  overflow-y: auto;
+}
+
+/* Meta */
+.meta-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: 24px;
+  row-gap: 6px;
+}
+.meta-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.meta-row .lbl {
+  color: #666;
+  font-size: 11.5px;
+  min-width: 36px;
   flex-shrink: 0;
 }
-.meta-item .val {
-  color: #e6edf3;
+.meta-row .val {
+  color: #ededed;
   font-size: 12px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.meta-item code.val {
+.meta-row code.val {
   color: #79c0ff;
-  background: rgba(110, 118, 129, 0.2);
-  padding: 0 5px;
-  border-radius: 4px;
+  background: transparent;
+  padding: 0;
   font-size: 11.5px;
 }
 
-/* Divider */
-.divider {
-  border: none;
-  border-top: 1px solid #21262d;
+.hr {
+  height: 1px;
+  background: #1a1a1a;
   margin: 14px 0;
 }
 
-/* Output */
 .line {
   margin: 4px 0;
   font-size: 12px;
+  letter-spacing: -0.01em;
 }
-.line.info  { color: #7ee787; }
-.line.error { color: #f85149; font-weight: 500; }
-.line.pulse  { animation: cf-pulse-text 1.6s ease-in-out infinite; }
-
-@keyframes cf-pulse-text {
-  0%, 100% { opacity: 0.9; }
-  50%      { opacity: 0.4; }
+.line.ok  { color: #0070f3; }
+.line.err { color: #e00; }
+.line.pulse { animation: line-pulse 1.6s ease-in-out infinite; }
+@keyframes line-pulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.45; }
 }
 
 .code {
-  background: rgba(110, 118, 129, 0.07);
+  background: #0a0a0a;
+  border: 1px solid #1a1a1a;
   padding: 12px 14px;
   border-radius: 6px;
   white-space: pre-wrap;
   word-break: break-word;
-  margin: 6px 0 12px;
-  color: #d2d8e0;
+  margin: 8px 0 14px;
+  color: #ededed;
   font-size: 12px;
-  line-height: 1.5;
-  border-left: 2px solid #30363d;
+  line-height: 1.55;
 }
-.code.error-text {
-  color: #ffa198;
-  border-left-color: #f85149;
-}
+.code.err-text { color: #ff6464; }
 
-/* Terminal 内部 scrollbar */
-.terminal-body::-webkit-scrollbar { width: 6px; }
-.terminal-body::-webkit-scrollbar-thumb {
-  background: rgba(48, 54, 61, 0.6);
+/* 终端内 scrollbar */
+.term-body::-webkit-scrollbar { width: 6px; }
+.term-body::-webkit-scrollbar-thumb {
+  background: transparent;
+  box-shadow: inset 0 0 0 6px rgba(255, 255, 255, 0.1);
   border-radius: 999px;
 }
-.terminal-body::-webkit-scrollbar-thumb:hover { background: rgba(48, 54, 61, 0.8); }
+.term-body::-webkit-scrollbar-thumb:hover {
+  box-shadow: inset 0 0 0 6px rgba(255, 255, 255, 0.2);
+}
 </style>

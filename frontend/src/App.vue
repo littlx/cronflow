@@ -56,7 +56,7 @@ onMounted(() => {
         <span>指标</span>
       </RouterLink>
       <div style="flex:1"></div>
-      <div style="padding:12px 16px;border-top:1px solid #30363d">
+      <div style="padding:12px 12px 4px;border-top:1px solid var(--border)">
         <span class="conn-indicator" :class="{ online: connected }">
           <span class="dot"></span>
           {{ connected ? 'WebSocket 已连接' : 'WebSocket 断开' }}

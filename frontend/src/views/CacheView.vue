@@ -105,22 +105,27 @@ onMounted(async () => {
   display: flex;
   gap: 18px;
   font-size: 12px;
-  color: var(--el-text-color-secondary);
-  margin-bottom: 8px;
+  color: var(--muted);
+  margin-bottom: 10px;
   flex-wrap: wrap;
 }
 .meta code {
-  color: var(--el-text-color-primary);
-  background: var(--el-fill-color-light);
+  color: var(--fg);
+  background: var(--accents-1);
+  border: 1px solid var(--border);
   padding: 1px 6px;
-  border-radius: 3px;
+  border-radius: 4px;
+  font-size: 11.5px;
 }
 .cache-doc {
-  background: #0d1117;
-  color: #c9d1d9;
+  background: #000;
+  color: #ededed;
   padding: 14px 16px;
-  border-radius: 6px;
+  border: 1px solid #1a1a1a;
+  border-radius: 8px;
+  font-family: 'Geist Mono', 'JetBrains Mono', 'SF Mono', Menlo, monospace;
   font-size: 12.5px;
+  line-height: 1.55;
   white-space: pre-wrap;
   word-break: break-word;
   margin: 0;

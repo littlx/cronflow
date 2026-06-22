@@ -161,17 +161,18 @@ onUnmounted(() => {
   margin-bottom: 18px;
 }
 .metric-name {
-  font-size: 13px;
-  font-weight: 600;
+  font-size: 12.5px;
+  font-weight: 500;
   margin-bottom: 6px;
-  color: var(--el-text-color-regular);
+  color: var(--muted);
 }
 code {
-  font-family: 'SF Mono', Menlo, monospace;
+  font-family: 'Geist Mono', 'JetBrains Mono', 'SF Mono', Menlo, monospace;
   font-size: 12px;
-  background: var(--el-fill-color-light);
+  background: var(--accents-1);
+  border: 1px solid var(--border);
   padding: 1px 6px;
-  border-radius: 3px;
-  color: var(--el-text-color-primary);
+  border-radius: 4px;
+  color: var(--fg);
 }
 </style>
