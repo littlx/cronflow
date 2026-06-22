@@ -30,7 +30,10 @@ class Settings(BaseSettings):
     secret_key: str = "change-me-in-production"
     auth_enabled: bool = False
 
-    # CORS
+    # 前端静态文件 (打包的 dist 目录, None = 不托管前端)
+    static_dir: str | None = None
+
+    # CORS (前端 dev server 时有用; 生产环境同域无需)
     cors_origins: list[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]
 
 

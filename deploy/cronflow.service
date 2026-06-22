@@ -1,0 +1,54 @@
+[Unit]
+Description=CronFlow — Task Scheduler & API Data Sync Center
+Documentation=https://github.com/your-org/cronflow
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=cronflow
+Group=cronflow
+
+# 安装位置 (install.sh 默认布局)
+WorkingDirectory=/opt/cronflow/backend
+Environment="PATH=/opt/cronflow/backend/.venv/bin:/usr/local/bin:/usr/bin:/bin"
+
+# 数据库与前端静态目录
+Environment="DATABASE_URL=sqlite+aiosqlite:////var/lib/cronflow/cronflow.db"
+Environment="STATIC_DIR=/opt/cronflow/frontend"
+
+# 运行调优 (按需覆盖)
+Environment="MAX_CONCURRENCY=8"
+Environment="LOG_RETENTION_DAYS=90"
+Environment="CACHE_RETENTION_DAYS=30"
+
+# 从 .env 文件追加配置 (可选, 覆盖上面的默认)
+EnvironmentFile=-/etc/cronflow/cronflow.env
+
+# 启动前确保迁移到最新版本
+ExecStartPre=/opt/cronflow/backend/.venv/bin/alembic upgrade head
+
+# 主进程
+ExecStart=/opt/cronflow/backend/.venv/bin/uvicorn app.main:app \
+    --host 0.0.0.0 --port 8123 \
+    --proxy-headers --forwarded-allow-ips='*'
+
+# 优雅重启 (SIGTERM → 等 30s)
+KillSignal=SIGTERM
+TimeoutStopSec=30
+Restart=on-failure
+RestartSec=5
+
+# 资源 & 安全加固
+LimitNOFILE=65536
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/cronflow
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=cronflow
+
+[Install]
+WantedBy=multi-user.target
