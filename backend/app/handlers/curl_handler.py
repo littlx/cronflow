@@ -20,6 +20,7 @@ from __future__ import annotations
 from typing import Any
 
 import httpx
+from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -112,6 +113,11 @@ class CurlHandler(TaskHandler):
             body = resp.text
 
         document = _process_response(handler_type, resp.status_code, body)
+        # upsert 语义: 缓存只保留最新一条, 先删同 collection 的旧记录再插入。
+        # 同一事务内由 executor 统一 commit, 失败回滚不会留下空缓存。
+        await session.execute(
+            delete(CrawledDataCache).where(CrawledDataCache.target_collection == target_collection)
+        )
         session.add(CrawledDataCache(target_collection=target_collection, document=document))
 
         return HandlerResult(

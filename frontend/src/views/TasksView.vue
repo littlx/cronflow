@@ -9,7 +9,6 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Upload } from '@element-plus/icons-vue'
 import { useTasksStore } from '@/stores/tasks'
 import { triggerTask } from '@/api/tasks'
-import { listCache } from '@/api/cache'
 import { parseCurl } from '@/utils/curl'
 import ParamForm from '@/components/ParamForm.vue'
 import type { Task, CacheItem } from '@/api/types'
@@ -177,7 +176,7 @@ function importFromCurl() {
   }
 }
 
-// ---- 缓存预览 ----
+// ---- 缓存预览 (upsert 语义: 每个 collection 单条最新) ----
 const previewVisible = ref(false)
 const previewCollection = ref('')
 const previewData = ref<CacheItem[]>([])
@@ -186,12 +185,20 @@ async function preview(t: Task) {
   const col = t.handler_config?.target_collection
   if (!col) { ElMessage.warning('未配置 target_collection'); return }
   try {
-    const data = await listCache(col, 20, 0)
+    const { getLatestCache } = await import('@/api/cache')
+    const data = await getLatestCache(col)
     previewCollection.value = col
-    previewData.value = data.items
+    previewData.value = data ? [data] : []
     previewVisible.value = true
   } catch (e: any) {
-    ElMessage.error(e.message)
+    // 404 = 没有缓存数据, 弹窗显示空状态
+    if ((e?.message || '').includes('404') || (e?.message || '').includes('没有缓存数据')) {
+      previewCollection.value = col
+      previewData.value = []
+      previewVisible.value = true
+    } else {
+      ElMessage.error(e.message)
+    }
   }
 }
 
