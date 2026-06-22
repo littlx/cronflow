@@ -2,10 +2,12 @@
 
 单进程架构: 用 AsyncServer 默认内存 manager, 不再需要 Redis 跨进程扇出。
 根治旧版 fd 泄漏: 全局单例, 整个进程一份。
+
+main.py 把 sio 用 socketio.ASGIApp 包在 FastAPI 外层 (FastAPI 作为
+other_asgi_app), 这样 /socket.io 路径走 sio, 其他请求走 FastAPI。
 """
 from __future__ import annotations
 
-import socketio
 from socketio import AsyncServer
 
 from app.core.logging import get_logger
@@ -19,9 +21,6 @@ sio: AsyncServer = AsyncServer(
     logger=False,
     engineio_logger=False,
 )
-
-# 可被 FastAPI 挂载的 ASGI app
-sio_app = socketio.ASGIApp(sio, socketio_path="socket.io")
 
 # ---- 事件名常量, 前后端共用 ----
 EVENT_NEW_LOG = "new_log"

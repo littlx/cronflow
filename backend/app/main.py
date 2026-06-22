@@ -8,22 +8,23 @@ lifespan 启动顺序:
 4. init_executor (创建协程池单例)
 5. scheduler_loop (asyncio task, 后台调度)
 
-挂载:
-- REST API 路由 (/api/*)
-- SocketIO ASGI app (/socket.io)
-- Prometheus metrics (/metrics)
+ASGI 顶层结构:
+    socketio.ASGIApp(sio, other_asgi_app=fastapi)
+即 socketio 在最外层, /socket.io 走 sio, 其他走 fastapi。
+这样 socketio 的 polling/websocket 协议都能正常握手 + upgrade。
 """
 from __future__ import annotations
 
 import asyncio
 from contextlib import asynccontextmanager
 
+import socketio
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
 from app.core.db import AsyncSessionLocal
-from app.core.eventbus import sio_app
+from app.core.eventbus import sio
 from app.core.logging import get_logger, setup_logging
 from app.routers import cache, health, logs, metrics, schedules, stats, tasks
 from app.services.scheduler import scheduler_loop
@@ -66,13 +67,13 @@ async def lifespan(app: FastAPI):
     logger.info("cronflow stopped")
 
 
-def create_app() -> FastAPI:
-    app = FastAPI(
+def create_fastapi() -> FastAPI:
+    fastapi_app = FastAPI(
         title=settings.app_name,
         lifespan=lifespan,
     )
 
-    app.add_middleware(
+    fastapi_app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins,
         allow_credentials=True,
@@ -81,18 +82,17 @@ def create_app() -> FastAPI:
     )
 
     # REST 路由
-    app.include_router(health.router)
-    app.include_router(tasks.router)
-    app.include_router(logs.router)
-    app.include_router(stats.router)
-    app.include_router(schedules.router)
-    app.include_router(cache.router)
-    app.include_router(metrics.router)
+    fastapi_app.include_router(health.router)
+    fastapi_app.include_router(tasks.router)
+    fastapi_app.include_router(logs.router)
+    fastapi_app.include_router(stats.router)
+    fastapi_app.include_router(schedules.router)
+    fastapi_app.include_router(cache.router)
+    fastapi_app.include_router(metrics.router)
 
-    # SocketIO 挂载到根路径, 与 FastAPI 共享 ASGI
-    app.mount("/", sio_app)
-
-    return app
+    return fastapi_app
 
 
-app = create_app()
+# 顶级 ASGI app: socketio 在外层, FastAPI 作为 other_asgi_app
+fastapi_app = create_fastapi()
+app = socketio.ASGIApp(sio, other_asgi_app=fastapi_app, socketio_path="socket.io")

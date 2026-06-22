@@ -31,4 +31,5 @@ Thumbs.db
 node_modules/
 dist/
 .vite/
+.tsbuild-node/
 *.tsbuildinfo

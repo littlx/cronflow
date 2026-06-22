@@ -1,0 +1,47 @@
+/**
+ * 时间/格式工具 — 后端时间字段统一为 ISO 字符串 (UTC), 前端按本地时区展示。
+ */
+
+export function formatDateTime(iso: string | null | undefined): string {
+  if (!iso) return '-'
+  try {
+    const d = new Date(iso)
+    if (isNaN(d.getTime())) return iso
+    const pad = (n: number) => String(n).padStart(2, '0')
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(
+      d.getHours()
+    )}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
+  } catch {
+    return iso
+  }
+}
+
+/** 距离 target 还有多久, 用于「下次运行」等场景。 */
+export function timeUntil(iso: string | null | undefined): string {
+  if (!iso) return '-'
+  const target = new Date(iso).getTime()
+  const now = Date.now()
+  const diff = target - now
+  if (isNaN(diff)) return '-'
+  if (diff <= 0) return '即将执行'
+
+  const secs = Math.floor(diff / 1000)
+  const mins = Math.floor(secs / 60)
+  const hours = Math.floor(mins / 60)
+  const days = Math.floor(hours / 24)
+
+  if (days > 0) return `${days}天后`
+  if (hours > 0) return `${hours}小时后`
+  if (mins > 0) return `${mins}分钟后`
+  return `${secs}秒后`
+}
+
+/** 持续时间秒数 → 人类可读 */
+export function formatDuration(seconds: number | null | undefined): string {
+  if (seconds == null) return '-'
+  if (seconds < 1) return `${(seconds * 1000).toFixed(0)}ms`
+  if (seconds < 60) return `${seconds.toFixed(2)}s`
+  const m = Math.floor(seconds / 60)
+  const s = (seconds % 60).toFixed(1)
+  return `${m}m${s}s`
+}
