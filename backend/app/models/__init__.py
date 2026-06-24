@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from app.models.cache import CrawledDataCache
+from app.models.cache_view_config import CacheViewConfig
 from app.models.idempotency import IdempotencyKey
 from app.models.notification import NotificationConfig, NotificationLog
 from app.models.schedule import JobSchedule
@@ -13,6 +14,7 @@ __all__ = [
     "JobSchedule",
     "TaskLog",
     "CrawledDataCache",
+    "CacheViewConfig",
     "IdempotencyKey",
     "NotificationConfig",
     "NotificationLog",

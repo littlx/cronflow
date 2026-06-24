@@ -1,3 +1,8 @@
+from app.schemas.cache_view import (
+    CacheColumnConfig,
+    CacheViewConfigOut,
+    CacheViewConfigUpsert,
+)
 from app.schemas.notification import (
     NotificationConfigCreate,
     NotificationConfigOut,
@@ -20,4 +25,5 @@ __all__ = [
     "TaskOut", "TaskParameter", "TriggerTaskIn",
     "NotificationConfigCreate", "NotificationConfigOut",
     "NotificationConfigUpdate", "NotificationLogOut",
+    "CacheColumnConfig", "CacheViewConfigOut", "CacheViewConfigUpsert",
 ]

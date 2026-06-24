@@ -1,18 +1,24 @@
 <!--
-  CacheView — 缓存数据查询 (单条 upsert)。
+  CacheView — 缓存数据查询 (upsert 单条) + 双视图 (JSON / 表格)
 
-  缓存语义改为 upsert: 每个 target_collection 最多一条记录,
-  每次 curl 任务执行覆盖旧的。这里直接用 /latest 接口取唯一一条。
+  - JSON 视图: 展开 document 整体 (与旧版一致)
+  - 表格视图: 按 CacheViewConfig (row_path + columns) 把 document 渲染成分页表
+    - 客户端分页 (slice), 因 document 是单条 JSON, 行集合在内存里
+    - 类型支持: text / number / datetime / boolean / json
+    - 列配置走 /api/cache-views/{collection}, 跨设备共享
 -->
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Refresh } from '@element-plus/icons-vue'
+import { Refresh, Setting, View } from '@element-plus/icons-vue'
 import { getLatestCache } from '@/api/cache'
+import { getCacheView } from '@/api/cacheViews'
 import { useTasksStore } from '@/stores/tasks'
 import { useSocketListener } from '@/composables/useSocket'
 import { formatDateTime } from '@/utils/format'
-import type { CacheItem } from '@/api/types'
+import { formatCellValue, getByPath } from '@/utils/cacheFormat'
+import CacheViewConfigDialog from '@/components/CacheViewConfigDialog.vue'
+import type { CacheItem, CacheViewConfig } from '@/api/types'
 
 const tasks = useTasksStore()
 
@@ -20,6 +26,14 @@ const collection = ref('')
 const current = ref<CacheItem | null>(null)
 const loading = ref(false)
 const notFound = ref(false)
+
+// 视图模式: 'table' | 'json'
+// 默认值会在 onCollectionChange 里按是否有列配置自动选择;
+// 用户手动切换后, 在同一 collection 内保持其选择, 但切换 collection
+// 时仍按新 collection 是否有配置重新决定。
+const mode = ref<'table' | 'json'>('table')
+// 标记用户在当前 collection 上是否已显式切换过模式
+const modeManuallyPicked = ref(false)
 
 // curl 任务的 target_collection 备选列表
 const collectionsFromTasks = () => {
@@ -32,6 +46,28 @@ const collectionsFromTasks = () => {
 }
 const suggestions = ref<string[]>([])
 
+// ---- 列配置 ----
+const viewConfig = ref<CacheViewConfig | null>(null)
+const configLoading = ref(false)
+const configDialogVisible = ref(false)
+
+async function loadViewConfig() {
+  if (!collection.value) {
+    viewConfig.value = null
+    return
+  }
+  configLoading.value = true
+  try {
+    viewConfig.value = await getCacheView(collection.value)
+  } catch (e: any) {
+    // 404 = 尚未配置, 静默
+    viewConfig.value = null
+  } finally {
+    configLoading.value = false
+  }
+}
+
+// ---- 加载 document ----
 async function load() {
   if (!collection.value.trim()) return
   loading.value = true
@@ -50,8 +86,20 @@ async function load() {
   }
 }
 
-// curl 任务执行成功后会广播 curl_changed, 这里如果当前选中的 collection
-// 在被刷新, 自动重新拉取一次
+async function onCollectionChange() {
+  // 切换 collection: 同时拉数据 + 列配置, 然后按是否有配置自动选模式。
+  page.value = 1
+  modeManuallyPicked.value = false
+  await Promise.all([load(), loadViewConfig()])
+  mode.value = viewConfig.value ? 'table' : 'json'
+}
+
+function pinMode() {
+  // 用户主动切换视图模式 → 锁定当前选择, 不再被自动逻辑覆盖。
+  modeManuallyPicked.value = true
+}
+
+// curl 任务执行成功后会广播 curl_changed, 如果当前 collection 在被刷新自动重拉
 useSocketListener('curl_changed', () => {
   if (collection.value) load()
 })
@@ -59,48 +107,223 @@ useSocketListener('curl_changed', () => {
 onMounted(async () => {
   if (!tasks.items.length) await tasks.load()
   suggestions.value = collectionsFromTasks()
-  // 自动选第一个并加载
   if (suggestions.value.length) {
     collection.value = suggestions.value[0]
-    await load()
+    await onCollectionChange()
   }
 })
+
+// ---- 表格视图: 行解析 + 分页 ----
+const allRows = computed<unknown[]>(() => {
+  if (!current.value || !viewConfig.value) return []
+  const doc = current.value.document
+  const sub = getByPath(doc, viewConfig.value.row_path || '')
+  if (Array.isArray(sub)) return sub
+  if (sub == null) return []
+  return [sub] // 单对象当一行
+})
+
+const page = ref(1)
+const pageSize = ref(20)
+const total = computed(() => allRows.value.length)
+const pagedRows = computed(() => {
+  const start = (page.value - 1) * pageSize.value
+  return allRows.value.slice(start, start + pageSize.value)
+})
+
+watch([() => viewConfig.value, () => current.value], () => {
+  // 切换数据/配置后重置分页
+  page.value = 1
+})
+
+// 列宽 fallback
+function colWidth(w?: number | null) {
+  return w ? `${w}px` : undefined
+}
+
+// 单元格点击 (json 类型 → 弹抽屉)
+const jsonDrawerVisible = ref(false)
+const jsonDrawerValue = ref<unknown>(null)
+const jsonDrawerLabel = ref('')
+function showCellJson(value: unknown, label: string) {
+  jsonDrawerValue.value = value
+  jsonDrawerLabel.value = label
+  jsonDrawerVisible.value = true
+}
+
+function onConfigSaved(cfg: CacheViewConfig) {
+  viewConfig.value = cfg
+  // 配置刚保存好, 默认切到表格让用户立刻看到效果
+  mode.value = 'table'
+  modeManuallyPicked.value = false
+}
+function onConfigCleared() {
+  viewConfig.value = null
+  mode.value = 'json'
+  modeManuallyPicked.value = false
+}
 </script>
 
 <template>
   <div class="page-container">
     <h2 class="page-title">缓存数据</h2>
     <div class="panel">
-      <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+      <div class="toolbar">
         <el-select
           v-model="collection"
           filterable allow-create default-first-option
           placeholder="选择或输入 target_collection"
-          style="width:360px"
-          @change="load"
+          style="width:340px"
+          @change="onCollectionChange"
         >
           <el-option v-for="c in suggestions" :key="c" :label="c" :value="c" />
         </el-select>
-        <el-button type="primary" @click="load">查询</el-button>
+
+        <el-radio-group v-model="mode" @change="pinMode">
+          <el-radio-button value="table">
+            <el-icon><View /></el-icon> 表格
+          </el-radio-button>
+          <el-radio-button value="json">
+            <el-icon><View /></el-icon> JSON
+          </el-radio-button>
+        </el-radio-group>
+
+        <el-button
+          :icon="Setting"
+          :disabled="!collection || !current"
+          @click="configDialogVisible = true"
+        >列配置</el-button>
         <el-button :icon="Refresh" @click="load">刷新</el-button>
       </div>
 
-      <el-empty v-if="!collection" description="选择或输入一个 target_collection 查看最新缓存" />
+      <!-- 空态 -->
+      <el-empty v-if="!collection" description="选择或输入一个 target_collection 查看缓存" />
       <el-empty v-else-if="notFound" :description="`暂无缓存数据 (collection: ${collection})`" />
+      <el-skeleton v-else-if="loading && !current" :rows="6" animated />
+
       <template v-else-if="current">
         <div class="meta">
           <span>id: <code>{{ current.id }}</code></span>
           <span>collection: <code>{{ current.target_collection }}</code></span>
           <span>更新时间: {{ formatDateTime(current.created_at) }}</span>
+          <span v-if="viewConfig && mode === 'table'">
+            行根路径: <code>{{ viewConfig.row_path || '(根)' }}</code>
+          </span>
+          <span v-if="mode === 'table' && viewConfig">
+            行数: <b>{{ total }}</b>
+          </span>
         </div>
-        <pre class="cache-doc">{{ JSON.stringify(current.document, null, 2) }}</pre>
+
+        <!-- 表格视图 -->
+        <template v-if="mode === 'table'">
+          <el-alert
+            v-if="!viewConfig"
+            type="info"
+            :closable="false"
+            style="margin-bottom:12px"
+          >
+            <template #title>
+              该 collection 尚未配置列展示。
+              <el-button link type="primary" @click="configDialogVisible = true">
+                点此打开列配置
+              </el-button>
+            </template>
+          </el-alert>
+
+          <template v-else-if="viewConfig.columns.length === 0">
+            <el-empty description="列配置为空, 请添加至少一列" />
+          </template>
+
+          <template v-else-if="!total">
+            <el-empty description="按当前 row_path 解析不到任何行" />
+          </template>
+
+          <template v-else>
+            <el-table :data="pagedRows" size="small" stripe>
+              <el-table-column
+                v-for="col in viewConfig.columns"
+                :key="col.key"
+                :label="col.label || col.key"
+                :width="colWidth(col.width)"
+                :min-width="col.width ? undefined : 120"
+                show-overflow-tooltip
+              >
+                <template #default="{ row }">
+                  <template v-if="col.type === 'json'">
+                    <el-button
+                      link size="small" type="primary"
+                      @click="showCellJson(getByPath(row, col.key), col.label || col.key)"
+                    >
+                      {{ formatCellValue(getByPath(row, col.key), 'json') }}
+                    </el-button>
+                  </template>
+                  <template v-else-if="col.type === 'boolean'">
+                    <span
+                      class="bool-cell"
+                      :class="{
+                        ok: getByPath(row, col.key) === true || getByPath(row, col.key) === 1 || getByPath(row, col.key) === '1' || getByPath(row, col.key) === 'true',
+                        no: getByPath(row, col.key) === false || getByPath(row, col.key) === 0 || getByPath(row, col.key) === '0' || getByPath(row, col.key) === 'false',
+                      }"
+                    >
+                      {{ formatCellValue(getByPath(row, col.key), 'boolean') }}
+                    </span>
+                  </template>
+                  <template v-else>
+                    {{ formatCellValue(getByPath(row, col.key), col.type) }}
+                  </template>
+                </template>
+              </el-table-column>
+            </el-table>
+
+            <div class="pager">
+              <el-pagination
+                :current-page="page"
+                :page-size="pageSize"
+                :total="total"
+                :page-sizes="[10, 20, 50, 100]"
+                layout="total, sizes, prev, pager, next, jumper"
+                @current-change="(p: number) => (page = p)"
+                @size-change="(s: number) => { pageSize = s; page = 1 }"
+              />
+            </div>
+          </template>
+        </template>
+
+        <!-- JSON 视图 -->
+        <pre v-else class="cache-doc">{{ JSON.stringify(current.document, null, 2) }}</pre>
       </template>
-      <el-skeleton v-else-if="loading" :rows="6" animated />
     </div>
+
+    <!-- 列配置对话框 -->
+    <CacheViewConfigDialog
+      v-model="configDialogVisible"
+      :collection="collection"
+      :document="current?.document"
+      :initial-config="viewConfig"
+      @saved="onConfigSaved"
+      @cleared="onConfigCleared"
+    />
+
+    <!-- JSON 单元格抽屉 -->
+    <el-drawer
+      v-model="jsonDrawerVisible"
+      :title="`字段: ${jsonDrawerLabel}`"
+      size="520px"
+      direction="rtl"
+    >
+      <pre class="cache-doc">{{ JSON.stringify(jsonDrawerValue, null, 2) }}</pre>
+    </el-drawer>
   </div>
 </template>
 
 <style scoped>
+.toolbar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
 .meta {
   display: flex;
   gap: 18px;
@@ -132,4 +355,18 @@ onMounted(async () => {
   overflow: auto;
   max-height: 640px;
 }
+/* 黑底里, 全局 ::selection 是黑底白字, 选中后看不见。
+   这里单独覆写: 高亮用浅色背景 + 黑字, 选中范围清晰可见。 */
+.cache-doc ::selection,
+.cache-doc::selection {
+  background: #ffcc00;
+  color: #000;
+}
+.pager {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 12px;
+}
+.bool-cell.ok { color: var(--geist-success); font-weight: 600; }
+.bool-cell.no { color: var(--geist-error); font-weight: 600; }
 </style>

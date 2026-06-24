@@ -97,6 +97,30 @@ export interface CacheItem {
   created_at: string | null
 }
 
+// ---- 缓存表格视图配置 ----
+
+export type CacheCellType = 'text' | 'number' | 'datetime' | 'boolean' | 'json'
+
+export interface CacheColumnConfig {
+  key: string                       // JSON 路径(支持 a.b.c / a[0].b)
+  label: string
+  type: CacheCellType
+  width?: number | null
+}
+
+export interface CacheViewConfig {
+  target_collection: string
+  row_path: string                  // "" 表示 document 自身即行集合
+  columns: CacheColumnConfig[]
+  created_at?: string | null
+  updated_at?: string | null
+}
+
+export interface CacheViewConfigUpsert {
+  row_path: string
+  columns: CacheColumnConfig[]
+}
+
 export interface StatsPayload {
   total_tasks: number
   total_schedules: number

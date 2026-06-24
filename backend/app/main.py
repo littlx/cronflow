@@ -36,7 +36,17 @@ from app.core.config import settings
 from app.core.db import AsyncSessionLocal
 from app.core.eventbus import sio
 from app.core.logging import get_logger, setup_logging
-from app.routers import cache, health, logs, metrics, notifications, schedules, stats, tasks
+from app.routers import (
+    cache,
+    cache_views,
+    health,
+    logs,
+    metrics,
+    notifications,
+    schedules,
+    stats,
+    tasks,
+)
 from app.services.scheduler import scheduler_loop
 
 logger = get_logger("main")
@@ -135,6 +145,7 @@ def create_fastapi() -> FastAPI:
     fastapi_app.include_router(stats.router)
     fastapi_app.include_router(schedules.router)
     fastapi_app.include_router(cache.router)
+    fastapi_app.include_router(cache_views.router)
     fastapi_app.include_router(notifications.router)
     fastapi_app.include_router(metrics.router)
 
