@@ -10,9 +10,10 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Refresh, Setting, View } from '@element-plus/icons-vue'
+import { Refresh, Setting, View, Cpu } from '@element-plus/icons-vue'
 import { getLatestCache } from '@/api/cache'
 import { getCacheView } from '@/api/cacheViews'
+import { triggerTask } from '@/api/tasks'
 import { useTasksStore } from '@/stores/tasks'
 import { useSocketListener } from '@/composables/useSocket'
 import { formatDateTime } from '@/utils/format'
@@ -45,6 +46,29 @@ const collectionsFromTasks = () => {
   return Array.from(set)
 }
 const suggestions = ref<string[]>([])
+
+// 关联的 cURL 任务列表
+const associatedTasks = computed(() => {
+  if (!collection.value) return []
+  return tasks.items.filter(t => t.kind === 'curl' && t.handler_config?.target_collection === collection.value)
+})
+
+const updatingCache = ref(false)
+
+async function triggerAssociatedTasks() {
+  if (!associatedTasks.value.length) return
+  updatingCache.value = true
+  try {
+    await Promise.all(
+      associatedTasks.value.map(t => triggerTask(t.ref, {}))
+    )
+    ElMessage.success(`已成功手动触发 ${associatedTasks.value.length} 个关联任务以更新缓存`)
+  } catch (e: any) {
+    ElMessage.error(e.message)
+  } finally {
+    updatingCache.value = false
+  }
+}
 
 // ---- 列配置 ----
 const viewConfig = ref<CacheViewConfig | null>(null)
@@ -193,6 +217,21 @@ function onConfigCleared() {
           :disabled="!collection || !current"
           @click="configDialogVisible = true"
         >列配置</el-button>
+        <el-tooltip
+          content="未找到与该缓存表关联的 cURL 任务"
+          :disabled="associatedTasks.length > 0 || !collection"
+          placement="top"
+        >
+          <span>
+            <el-button
+              type="primary"
+              :icon="Cpu"
+              :disabled="!associatedTasks.length"
+              :loading="updatingCache"
+              @click="triggerAssociatedTasks"
+            >更新缓存</el-button>
+          </span>
+        </el-tooltip>
         <el-button :icon="Refresh" @click="load">刷新</el-button>
       </div>
 
