@@ -10,7 +10,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Refresh, Setting, View, Cpu } from '@element-plus/icons-vue'
+import { Refresh, Setting, View, Cpu, Download } from '@element-plus/icons-vue'
 import { getLatestCache } from '@/api/cache'
 import { getCacheView } from '@/api/cacheViews'
 import { triggerTask } from '@/api/tasks'
@@ -186,6 +186,34 @@ function onConfigCleared() {
   mode.value = 'json'
   modeManuallyPicked.value = false
 }
+
+function exportToExcel() {
+  if (!viewConfig.value || !allRows.value.length) return
+
+  const cols = viewConfig.value.columns
+  const headers = cols.map(c => `"${(c.label || c.key).replace(/"/g, '""')}"`).join(',')
+  const rows = allRows.value.map(row => {
+    return cols.map(c => {
+      const rawVal = getByPath(row, c.key)
+      const formattedVal = formatCellValue(rawVal, c.type)
+      const strVal = formattedVal === null || formattedVal === undefined ? '' : String(formattedVal)
+      return `"${strVal.replace(/"/g, '""')}"`
+    }).join(',')
+  })
+
+  const csvContent = '\uFEFF' + [headers, ...rows].join('\n')
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.setAttribute('href', url)
+  link.setAttribute('download', `${collection.value}_export_${new Date().toISOString().slice(0, 10)}.csv`)
+  link.style.visibility = 'hidden'
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  URL.revokeObjectURL(url)
+  ElMessage.success('导出成功')
+}
 </script>
 
 <template>
@@ -232,6 +260,12 @@ function onConfigCleared() {
             >更新缓存</el-button>
           </span>
         </el-tooltip>
+        <el-button
+          v-if="viewConfig && allRows.length"
+          type="success"
+          :icon="Download"
+          @click="exportToExcel"
+        >导出 Excel</el-button>
         <el-button :icon="Refresh" @click="load">刷新</el-button>
       </div>
 
