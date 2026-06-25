@@ -62,63 +62,54 @@ make dev-frontend
 
 > **开发期推荐用两端口**: vite dev server 提供 HMR, 后端不挂 SPA(STATIC_DIR 不设置)。
 
-## 构建 + 部署 (生产)
+## 生产部署 (极简单进程)
 
-> 部署目标: 一台 Linux 服务器, 走 systemd 管理。
+本系统支持极简部署：**仅需在服务器上运行 1 个 systemd 服务**。数据库使用 SQLite 单文件，编译后的前端静态资源直接由后端的 FastAPI 托管（通过 `STATIC_DIR` 静态目录配置），无需额外安装 Nginx 或 Caddy 服务（除可选的反向代理外）。
 
-### 1. 在仓库内构建前端
+### 部署 3 步走
 
-任意机器 (本地或 CI) 上:
+1. **本地构建前端**：
+   在开发机或 CI 环境下，一键打包前端资源：
+   ```bash
+   make build      # 这会在 frontend/dist 目录下生成编译好的前端文件
+   ```
 
-```bash
-make build      # 生成 frontend/dist
-```
+2. **代码同步**：
+   将整个仓库（包含 `frontend/dist`）同步至服务器临时目录（如 `/tmp/cronflow-src`）：
+   ```bash
+   rsync -av --exclude='.venv' --exclude='node_modules' --exclude='*.db*' \
+       ./ user@server:/tmp/cronflow-src/
+   ```
 
-### 2. 把整个仓库同步到服务器
+3. **服务器上一键安装**：
+   通过 SSH 登录服务器并运行部署脚本：
+   ```bash
+   ssh user@server "cd /tmp/cronflow-src && sudo bash deploy/install.sh"
+   ```
 
-```bash
-rsync -av --exclude='.venv' --exclude='node_modules' --exclude='*.db*' \
-    ./ user@server:/tmp/cronflow-src/
-```
+> [!NOTE]
+> `install.sh` 脚本会自动创建 `cronflow` 系统服务用户、在 `/opt/cronflow` 下配置虚拟环境、将前端静态目录绑定至后端托管，并开机自启 systemd 服务（服务在 `:8123` 端口暴露 API 与前端页面）。
+>
+> **升级服务**：后续修改代码后，再次执行上述 3 步即可（数据存放在 `/var/lib/cronflow/` 中，升级不会影响已有数据）。
 
-### 3. 在服务器上执行安装脚本
-
-```bash
-ssh user@server
-cd /tmp/cronflow-src
-sudo bash deploy/install.sh
-# 或 sudo make deploy
-```
-
-`install.sh` 会:
-
-1. 创建 `cronflow` 系统用户与组
-2. 同步后端源码到 `/opt/cronflow/backend`, 创建 venv 并 `pip install -e .`
-3. 同步 `frontend/dist` 到 `/opt/cronflow/frontend`
-4. 创建数据目录 `/var/lib/cronflow` (SQLite 文件位置)
-5. 安装配置示例 `/etc/cronflow/cronflow.env`
-6. 安装 `/etc/systemd/system/cronflow.service`
-7. `systemctl enable --now cronflow`
-
-启动后, 服务在 `:8123` 暴露 API + SPA。浏览器访问 `http://<server-ip>:8123/` 即可。
-
-> 升级: 改完代码 → `make build` → 重新 rsync → `sudo bash deploy/install.sh` (会保留 `/var/lib/cronflow` 数据)。
-
-### 4. 常用服务管理
+### 常用服务管理
 
 ```bash
-sudo systemctl status cronflow      # 状态
-sudo systemctl restart cronflow     # 重启
-sudo journalctl -u cronflow -f      # 实时日志
-sudo journalctl -u cronflow -n 200  # 最近 200 行
+# 服务状态与重启
+sudo systemctl status cronflow
+sudo systemctl restart cronflow
 
-# 或用 Makefile (本仓库下)
+# 查看运行日志
+sudo journalctl -u cronflow -f      # 实时追踪日志
+sudo journalctl -u cronflow -n 200  # 查看最近 200 行日志
+
+# 也可直接在仓库根目录下使用 Makefile 快捷命令
 make status / make restart / make tail / make logs
 ```
 
-### 5. 反向代理 (可选)
+### 反向代理 (可选)
 
-如需 HTTPS、域名、统一接入点, 在前面架一层 nginx/caddy:
+如需启用 HTTPS 或配置自定义域名，可在服务前方架设一层 Nginx 或 Caddy：
 
 ```nginx
 server {
@@ -128,7 +119,7 @@ server {
     location / {
         proxy_pass http://127.0.0.1:8123;
         proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;       # WebSocket
+        proxy_set_header Upgrade $http_upgrade;       # 确保 WebSocket 协议正常升级
         proxy_set_header Connection "upgrade";
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
@@ -138,8 +129,6 @@ server {
     }
 }
 ```
-
-CronFlow 启动时带 `--proxy-headers --forwarded-allow-ips='*'`, 反代头会被正确识别。
 
 ## 项目结构
 
