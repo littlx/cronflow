@@ -44,11 +44,11 @@ fi
 
 # ---- 2) 目录 ----
 echo "==> 创建目录结构"
-mkdir -p "$PREFIX/backend" "$PREFIX/frontend" "$DATA_DIR" "$ETC_DIR"
+mkdir -p "$PREFIX/backend" "$DATA_DIR" "$ETC_DIR"
 
 # ---- 3) 后端源码 + venv ----
 echo "==> 同步后端源码"
-# 排除 venv / 缓存 / DB, 但保留 alembic / app / tasks / pyproject
+# 排除 venv / 缓存 / DB, 但保留 alembic / app / tasks / pyproject / dist
 rsync -a --delete \
     --exclude ".venv/" \
     --exclude "__pycache__/" \
@@ -62,13 +62,11 @@ fi
 "$PREFIX/backend/.venv/bin/pip" install --upgrade pip
 "$PREFIX/backend/.venv/bin/pip" install --upgrade -e "$PREFIX/backend"
 
-# ---- 4) 前端 dist ----
-if [[ ! -d "$REPO_ROOT/frontend/dist" ]]; then
-    echo "ERROR: $REPO_ROOT/frontend/dist 不存在, 请先在前端目录执行 npm run build" >&2
+# ---- 4) 验证前端 dist ----
+if [[ ! -f "$PREFIX/backend/dist/index.html" ]]; then
+    echo "ERROR: 前端打包资源 $PREFIX/backend/dist/index.html 不存在, 请确保同步前在本地执行了 npm run build" >&2
     exit 1
 fi
-echo "==> 同步前端 dist"
-rsync -a --delete "$REPO_ROOT/frontend/dist/" "$PREFIX/frontend/"
 
 # ---- 5) 环境配置 ----
 if [[ ! -f "$ETC_DIR/cronflow.env" ]]; then

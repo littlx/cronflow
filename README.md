@@ -64,33 +64,29 @@ make dev-frontend
 
 ## 生产部署 (极简单进程)
 
-本系统支持极简部署：**仅需在服务器上运行 1 个 systemd 服务**。数据库使用 SQLite 单文件，编译后的前端静态资源直接由后端的 FastAPI 托管（通过 `STATIC_DIR` 静态目录配置），无需额外安装 Nginx 或 Caddy 服务（除可选的反向代理外）。
+本系统支持极简部署：**仅需在服务器上运行 1 个 systemd 服务**。数据库使用 SQLite 单文件，编译后的前端静态资源直接由后端的 FastAPI 托管（通过 `STATIC_DIR` 静态目录配置），无需额外安装 Nginx 或 Caddy 服务。
 
-### 部署 3 步走
+> **关于前端同步**：
+> 服务端部署**只需要传输编译打包好的 `frontend/dist` 目录**。前端的开发依赖（`node_modules/`）、源代码（`src/`）以及构建配置文件（`vite.config.ts`、`tsconfig.json` 等）仅在本地编译打包时需要，服务端无需保留。
 
-1. **本地构建前端**：
-   在开发机或 CI 环境下，一键打包前端资源：
-   ```bash
-   make build      # 这会在 frontend/dist 目录下生成编译好的前端文件
-   ```
+### 一键部署 / 升级
 
-2. **代码同步**：
-   将整个仓库（包含 `frontend/dist`）同步至服务器临时目录（如 `/tmp/cronflow-src`）：
-   ```bash
-   rsync -av --exclude='.venv' --exclude='node_modules' --exclude='*.db*' \
-       ./ user@server:/tmp/cronflow-src/
-   ```
+在开发机上，直接执行以下 Makefile 命令（需指定远程服务器的 SSH 地址 `SERVER`）：
 
-3. **服务器上一键安装**：
-   通过 SSH 登录服务器并运行部署脚本：
-   ```bash
-   ssh user@server "cd /tmp/cronflow-src && sudo bash deploy/install.sh"
-   ```
+```bash
+# 一键自动打包、精简同步、远程安装/升级
+make ship SERVER=user@your-server-ip
+```
+
+该命令将自动为您完成以下 3 个步骤：
+1. **本地构建前端**：在本地自动执行 `npm run build`。因配置了输出路径重定向，构建后的前端静态资源会直接生成在 `backend/dist/` 目录下。
+2. **代码同步 (精简)**：使用 `rsync` 将项目同步到服务器临时目录（如 `/tmp/cronflow-src`）。**该过程通过 `deploy/rsync-exclude.list` 过滤，自动排除了整个 `frontend/` 文件夹（即所有的源码和 node_modules），仅随后端代码包一同上传已打包完成的 `backend/dist/`。**
+3. **远程安装**：通过 SSH 在服务器上自动执行 `sudo bash deploy/install.sh` 进行安装或热更新。
 
 > [!NOTE]
 > `install.sh` 脚本会自动创建 `cronflow` 系统服务用户、在 `/opt/cronflow` 下配置虚拟环境、将前端静态目录绑定至后端托管，并开机自启 systemd 服务（服务在 `:8123` 端口暴露 API 与前端页面）。
 >
-> **升级服务**：后续修改代码后，再次执行上述 3 步即可（数据存放在 `/var/lib/cronflow/` 中，升级不会影响已有数据）。
+> **升级服务**：后续修改代码后，再次在本地执行 `make ship SERVER=...` 即可（数据存放在 `/var/lib/cronflow/` 中，升级不会影响已有数据库数据）。
 
 ### 常用服务管理
 
@@ -139,7 +135,8 @@ cronflow-v2/
 ├── deploy/
 │   ├── install.sh             # 服务器一键部署脚本
 │   ├── cronflow.service       # systemd unit
-│   └── cronflow.env.example   # 配置示例
+│   ├── cronflow.env.example   # 配置示例
+│   └── rsync-exclude.list     # rsync 过滤规则列表 (排除前端源码等)
 ├── backend/
 │   ├── pyproject.toml
 │   ├── alembic/               # 迁移 (initial schema 含 7 张表)
@@ -174,8 +171,7 @@ cronflow-v2/
 
 ```
 /opt/cronflow/
-├── backend/                   # 后端源码 + .venv
-└── frontend/                  # 前端 dist (FastAPI 用 STATIC_DIR 指向)
+└── backend/                   # 后端源码 + .venv + 前端打包产物 (backend/dist/)
 
 /var/lib/cronflow/cronflow.db  # SQLite 数据库
 /etc/cronflow/cronflow.env     # 运行配置 (覆盖 unit Environment=)

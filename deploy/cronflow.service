@@ -15,7 +15,7 @@ Environment="PATH=/opt/cronflow/backend/.venv/bin:/usr/local/bin:/usr/bin:/bin"
 
 # 数据库与前端静态目录
 Environment="DATABASE_URL=sqlite+aiosqlite:////var/lib/cronflow/cronflow.db"
-Environment="STATIC_DIR=/opt/cronflow/frontend"
+Environment="STATIC_DIR=/opt/cronflow/backend/dist"
 
 # 运行调优 (按需覆盖)
 Environment="MAX_CONCURRENCY=8"

@@ -1,5 +1,5 @@
 .PHONY: help install dev dev-backend dev-frontend build build-frontend migrate clean
-.PHONY: deploy status restart logs stop tail
+.PHONY: deploy ship status restart logs stop tail
 
 # 默认目标显示帮助
 help:
@@ -14,8 +14,9 @@ help:
 	@echo "  构建:"
 	@echo "    make build           前端 npm run build (生成 frontend/dist)"
 	@echo ""
-	@echo "  部署 (在目标服务器上执行, 需 sudo):"
-	@echo "    make deploy          运行 deploy/install.sh (拉新代码后重新执行即升级)"
+	@echo "  部署:"
+	@echo "    make ship SERVER=u@ip 一键打包前端、同步到远程(仅dist, 排除前端源码)、执行安装脚本"
+	@echo "    make deploy          在目标服务器上运行 deploy/install.sh (本地部署或已同步时使用)"
 	@echo ""
 	@echo "  服务管理 (sudo systemctl):"
 	@echo "    make status          systemctl status cronflow"
@@ -49,6 +50,18 @@ build-frontend:
 	cd frontend && npm run build
 
 # ============ 部署 ============
+
+ship:
+	@if [ -z "$(SERVER)" ]; then \
+		echo "ERROR: Please specify SERVER, e.g., make ship SERVER=user@your-server-ip"; \
+		exit 1; \
+	fi
+	@echo "==> 1. Building frontend locally..."
+	cd frontend && npm run build
+	@echo "==> 2. Syncing code and build artifacts (excluding frontend sources)..."
+	rsync -avz --delete --exclude-from=deploy/rsync-exclude.list ./ $(SERVER):/tmp/cronflow-src/
+	@echo "==> 3. Running remote installation..."
+	ssh -t $(SERVER) "cd /tmp/cronflow-src && sudo bash deploy/install.sh"
 
 deploy:
 	@if [ "$$(id -u)" -ne 0 ]; then \
