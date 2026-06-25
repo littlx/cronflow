@@ -343,12 +343,15 @@ onMounted(() => tasks.load())
             <span>Headers / Params / Body</span>
             <el-tooltip placement="top" effect="dark">
               <template #content>
-                <div v-pre style="font-size:11px;line-height:1.6">
-                  可在输入框值中填入占位符，运行时自动替换：<br/>
-                  • <code>{{ now }}</code>: 本地当前时间 (如 2026-06-25 16:16:44)<br/>
-                  • <code>{{ now_iso }}</code>: ISO 时间 | <code>{{ timestamp }}</code>: 时间戳<br/>
-                  • <code>{{ today }}</code> / <code>{{ yesterday }}</code> / <code>{{ tomorrow }}</code>: 日期<br/>
-                  • <code>{{ uuid }}</code>: 随机 UUID 串
+                <div v-pre style="font-size:11px;line-height:1.65;max-width:340px">
+                  <div style="font-weight:600;margin-bottom:6px;color:var(--el-color-primary-light-3)">支持的动态参数占位符（运行前自动替换）：</div>
+                  <div style="margin-bottom:3px">• <code>{{ now }}</code>: 本地当前时间 (如 <code>2026-06-25 16:16:44</code>)</div>
+                  <div style="margin-bottom:3px">• <code>{{ now_iso }}</code>: ISO 8601 本地时间 (如 <code>2026-06-25T16:16:44+08:00</code>)</div>
+                  <div style="margin-bottom:3px">• <code>{{ today }}</code> / <code>{{ yesterday }}</code> / <code>{{ tomorrow }}</code>: 日期 (如 <code>2026-06-25</code>)</div>
+                  <div style="margin-bottom:3px">• <code>{{ timestamp }}</code>: 秒级 Unix 时间戳 (如 <code>1782348555</code>)</div>
+                  <div style="margin-bottom:10px">• <code>{{ uuid }}</code>: 随机 UUID 字符串 (如 <code>db6d8ede-e1b4-4b59-bf23...</code>)</div>
+                  <div style="font-weight:600;margin-bottom:4px;color:var(--el-color-primary-light-3)">填写配置示例 (JSON)：</div>
+                  <pre style="margin:0;background:rgba(255,255,255,0.08);padding:6px;border-radius:4px;font-family:monospace;font-size:10px;color:#ededed;line-height:1.4">{\n  "startTime": "{{ yesterday }} 00:00:00",\n  "endTime": "{{ now }}"\n}</pre>
                 </div>
               </template>
               <el-icon style="cursor: pointer; color: var(--el-text-color-secondary); font-size: 13px;"><QuestionFilled /></el-icon>
