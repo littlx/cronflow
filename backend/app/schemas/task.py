@@ -40,6 +40,7 @@ class CurlHandlerConfig(BaseModel):
     url: str
     method: str = "GET"
     headers: dict[str, str] = {}
+    params: dict[str, Any] | None = None     # query string (GET 友好), 与 URL 自带 query 合并
     data: dict[str, Any] | str | None = None
     handler_type: str = "PURE_JSON"          # PURE_JSON | NESTED_DATA | RAW_RESPONSE
     target_collection: str

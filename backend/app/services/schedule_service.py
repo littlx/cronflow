@@ -35,7 +35,29 @@ def compute_next_run(sched: JobSchedule, base: datetime | None = None) -> dateti
                 break
         if seconds <= 0:
             seconds = 300
-        return base + timedelta(seconds=seconds)
+        next_run = base + timedelta(seconds=seconds)
+
+        start_time = args.get("start_time")
+        end_time = args.get("end_time")
+        if start_time and end_time:
+            try:
+                sh, sm = map(int, start_time.split(":")[:2])
+                eh, em = map(int, end_time.split(":")[:2])
+                nr_local = next_run.astimezone()
+                start_dt = nr_local.replace(hour=sh, minute=sm, second=0, microsecond=0)
+                end_dt = nr_local.replace(hour=eh, minute=em, second=0, microsecond=0)
+                if start_dt <= end_dt:
+                    if nr_local < start_dt:
+                        nr_local = start_dt
+                    elif nr_local > end_dt:
+                        nr_local = start_dt + timedelta(days=1)
+                else:
+                    if end_dt < nr_local < start_dt:
+                        nr_local = start_dt
+                next_run = nr_local.astimezone(timezone.utc)
+            except Exception as e:
+                logger.warning("invalid active time range constraint", start=start_time, end=end_time, error=str(e))
+        return next_run
 
     if sched.trigger_type == "cron":
         minute = args.get("minute", "*")

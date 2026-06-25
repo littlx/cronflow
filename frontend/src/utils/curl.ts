@@ -8,9 +8,10 @@
  */
 
 export interface ParsedCurl {
-  url: string
+  url: string                                 // 已剥离 query 的纯 URL
   method: string
   headers: Record<string, string>
+  params: Record<string, string>              // 从 URL query 解析出的键值; GET 任务尤其有用
   data: Record<string, any> | string | null
   rawData: string
 }
@@ -46,7 +47,7 @@ export function parseCurl(command: string): ParsedCurl {
   let start = 0
   if (tokens[0] === 'curl' || tokens[0].endsWith('/curl')) start = 1
 
-  const result: ParsedCurl = { url: '', method: 'GET', headers: {}, data: null, rawData: '' }
+  const result: ParsedCurl = { url: '', method: 'GET', headers: {}, params: {}, data: null, rawData: '' }
   let hasData = false
 
   for (let i = start; i < tokens.length; i++) {
@@ -138,6 +139,11 @@ export function parseCurl(command: string): ParsedCurl {
 
   if (!result.url) throw new Error('未能从 cURL 中解析出 URL')
 
+  // 拆 URL 上的 query 到 params, 保留干净的 URL。
+  // 这样 GET 任务在表单里能直接看到 / 编辑参数; 后端 handler 会把 params
+  // 再拼回去, 跟原行为等价但更直观。
+  result.url = extractQueryToParams(result.url, result.params)
+
   if (hasData && result.method === 'GET') result.method = 'POST'
 
   if (hasData && result.rawData) {
@@ -178,4 +184,38 @@ function setBasicAuth(headers: Record<string, string>, userpass: string): void {
   if (hasHeader(headers, 'Authorization')) return
   try { headers['Authorization'] = 'Basic ' + btoa(userpass) }
   catch { headers['Authorization'] = 'Basic ' + userpass }
+}
+
+/**
+ * 把 URL 上的 ?a=b&c=d 拆到 params, 返回不带 query 的 URL。
+ * 同名 key 出现多次时按最后一个胜出 (与表单 key-value 模型一致)。
+ *
+ * 兼容三种形态:
+ *   1. 完整 URL  https://x/y?a=1
+ *   2. 协议相对  //x/y?a=1
+ *   3. 仅路径    /y?a=1
+ */
+function extractQueryToParams(
+  rawUrl: string,
+  params: Record<string, string>,
+): string {
+  const qIdx = rawUrl.indexOf('?')
+  if (qIdx < 0) return rawUrl
+
+  const base = rawUrl.slice(0, qIdx)
+  const query = rawUrl.slice(qIdx + 1)
+  // hash 不拼回 params, 保留到 URL 末尾
+  const hashIdx = query.indexOf('#')
+  const pure = hashIdx >= 0 ? query.slice(0, hashIdx) : query
+  const hash = hashIdx >= 0 ? '#' + query.slice(hashIdx + 1) : ''
+
+  try {
+    const sp = new URLSearchParams(pure)
+    sp.forEach((v, k) => {
+      if (k) params[k] = v
+    })
+  } catch {
+    return rawUrl
+  }
+  return base + hash
 }

@@ -1,8 +1,14 @@
 """cURL handler — httpx.AsyncClient 异步抓取 → 写入 JSON 缓存表。
 
 handler_config:
-  url, method (GET|POST|...), headers (dict), data (dict|str|None),
-  handler_type (PURE_JSON|NESTED_DATA|RAW_RESPONSE), target_collection, timeout?
+  url, method (GET|POST|...), headers (dict), params (dict|None),
+  data (dict|str|None), handler_type (PURE_JSON|NESTED_DATA|RAW_RESPONSE),
+  target_collection, timeout?
+
+params 语义:
+  - 仅 dict, 表示要拼到 URL query 上的键值
+  - URL 自带的 query 与 params 合并 (params 同名键覆盖 URL 自带)
+  - 任意 method 都生效, GET 任务把参数放这里比塞进 data 更直观
 
 data 序列化策略 (按 Content-Type 决定):
   - dict/list + Content-Type 含 'json'         → json=data (JSON body)
@@ -65,6 +71,7 @@ class CurlHandler(TaskHandler):
         url = cfg.get("url") or ""
         method = (cfg.get("method") or "GET").upper()
         headers = dict(cfg.get("headers") or {})  # copy: 下方可能改写 Content-Type
+        params = cfg.get("params") or None
         data = cfg.get("data")
         handler_type = cfg.get("handler_type") or "PURE_JSON"
         target_collection = cfg.get("target_collection") or "default"
@@ -75,6 +82,11 @@ class CurlHandler(TaskHandler):
             raise RuntimeError(f"curl task {resolved.ref} 缺少 url")
 
         req_kwargs: dict = {"method": method, "url": url, "headers": headers, "timeout": timeout}
+        # query string: 显式 params 字段直接传给 httpx;
+        # URL 自带的 ?a=b 由 httpx 自动保留, params 同名键会追加而非覆盖,
+        # 故此处不再合并, 避免重复 (httpx 行为: URL query + params 都拼上)。
+        if isinstance(params, dict) and params:
+            req_kwargs["params"] = params
 
         if data is not None and method != "GET":
             ct = _get_content_type(headers)

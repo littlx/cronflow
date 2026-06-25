@@ -8,7 +8,7 @@
 import { computed } from 'vue'
 import { useTasksStore } from '@/stores/tasks'
 
-const props = defineProps<{ modelValue: string }>()
+const props = defineProps<{ modelValue: string; disabled?: boolean }>()
 const emit = defineEmits<{ (e: 'update:modelValue', v: string): void }>()
 
 const tasks = useTasksStore()
@@ -23,7 +23,7 @@ const local = computed({
 </script>
 
 <template>
-  <el-select v-model="local" filterable placeholder="选择任意 python / curl 任务" style="width:100%">
+  <el-select v-model="local" filterable placeholder="选择任意 python / curl 任务" style="width:100%" :disabled="disabled">
     <el-option-group label="Python (代码注册)">
       <el-option v-for="t in pythonTasks" :key="t.ref" :label="t.name" :value="t.ref">
         <span style="float:left">{{ t.name }}</span>

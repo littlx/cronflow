@@ -14,7 +14,7 @@ import ParamForm from '@/components/ParamForm.vue'
 import type { Task, CacheItem } from '@/api/types'
 
 const tasks = useTasksStore()
-const activeTab = ref<'python' | 'curl'>('python')
+const activeTab = ref<'python' | 'curl'>('curl')
 
 // ---- 立即触发参数弹窗 ----
 const triggerDlgVisible = ref(false)
@@ -59,6 +59,7 @@ interface CurlForm {
   url: string
   method: string
   headers: string                 // JSON 文本
+  params: string                  // JSON 文本 (query string 键值)
   data: string                    // JSON 文本
   handler_type: 'PURE_JSON' | 'NESTED_DATA' | 'RAW_RESPONSE'
   target_collection: string
@@ -67,7 +68,7 @@ interface CurlForm {
 
 const emptyForm = (): CurlForm => ({
   name: '', description: '', url: '', method: 'GET',
-  headers: '{}', data: '', handler_type: 'PURE_JSON',
+  headers: '{}', params: '{}', data: '', handler_type: 'PURE_JSON',
   target_collection: '', timeout: null,
 })
 const curlForm = ref<CurlForm>(emptyForm())
@@ -87,6 +88,7 @@ function openEdit(t: Task) {
     url: cfg.url || '',
     method: cfg.method || 'GET',
     headers: JSON.stringify(cfg.headers || {}, null, 2),
+    params: JSON.stringify(cfg.params || {}, null, 2),
     data: cfg.data ? (typeof cfg.data === 'string' ? cfg.data : JSON.stringify(cfg.data, null, 2)) : '',
     handler_type: cfg.handler_type || 'PURE_JSON',
     target_collection: cfg.target_collection || '',
@@ -99,6 +101,11 @@ async function submitCurl() {
   let headers: Record<string, string> = {}
   try { headers = JSON.parse(curlForm.value.headers || '{}') }
   catch { ElMessage.error('headers 不是合法 JSON'); return }
+  let params: Record<string, any> | null = null
+  if (curlForm.value.params && curlForm.value.params.trim() && curlForm.value.params.trim() !== '{}') {
+    try { params = JSON.parse(curlForm.value.params) }
+    catch { ElMessage.error('params 不是合法 JSON'); return }
+  }
   let body: any = null
   if (curlForm.value.data) {
     try { body = JSON.parse(curlForm.value.data) }
@@ -111,6 +118,7 @@ async function submitCurl() {
       url: curlForm.value.url,
       method: curlForm.value.method,
       headers,
+      params,
       data: body,
       handler_type: curlForm.value.handler_type,
       target_collection: curlForm.value.target_collection,
@@ -162,6 +170,7 @@ function importFromCurl() {
       name: '', description: '',
       url: p.url, method: p.method,
       headers: JSON.stringify(p.headers, null, 2),
+      params: JSON.stringify(p.params || {}, null, 2),
       data: p.data == null ? '' : (typeof p.data === 'string' ? p.data : JSON.stringify(p.data, null, 2)),
       handler_type: 'PURE_JSON',
       target_collection: guessCollection(p.url),
@@ -275,34 +284,83 @@ onMounted(() => tasks.load())
     <el-dialog
       v-model="curlDlgVisible"
       :title="editingId ? '编辑 cURL 任务' : '新建 cURL 任务'"
-      width="640px"
+      width="960px"
       destroy-on-close
     >
-      <el-form label-width="100px">
-        <el-form-item label="名称"><el-input v-model="curlForm.name" /></el-form-item>
-        <el-form-item label="描述"><el-input v-model="curlForm.description" /></el-form-item>
-        <el-form-item label="URL"><el-input v-model="curlForm.url" placeholder="https://..." /></el-form-item>
-        <el-form-item label="方法">
-          <el-select v-model="curlForm.method" style="width:120px">
-            <el-option v-for="m in ['GET','POST','PUT','DELETE']" :key="m" :label="m" :value="m" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="缓存表名">
-          <el-input v-model="curlForm.target_collection" placeholder="my_api_data" />
-        </el-form-item>
-        <el-form-item label="处理方式">
-          <el-select v-model="curlForm.handler_type" style="width:220px">
-            <el-option label="纯JSON" value="PURE_JSON" />
-            <el-option label="嵌套data" value="NESTED_DATA" />
-            <el-option label="原始响应" value="RAW_RESPONSE" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="超时(秒)">
-          <el-input-number v-model="curlForm.timeout" :min="1" :max="600" placeholder="默认 60" />
-        </el-form-item>
-        <el-form-item label="Headers"><el-input v-model="curlForm.headers" type="textarea" :rows="3" /></el-form-item>
-        <el-form-item label="Body"><el-input v-model="curlForm.data" type="textarea" :rows="3" placeholder="JSON / form / raw" /></el-form-item>
-      </el-form>
+      <div class="curl-form-grid">
+        <!-- 左栏: 基本信息 -->
+        <section class="form-col">
+          <div class="form-col-title">基本信息</div>
+          <el-form label-width="86px" label-position="left">
+            <el-form-item label="名称">
+              <el-input v-model="curlForm.name" placeholder="任务名称" />
+            </el-form-item>
+            <el-form-item label="描述">
+              <el-input v-model="curlForm.description" placeholder="可选" />
+            </el-form-item>
+            <el-form-item label="URL">
+              <el-input v-model="curlForm.url" placeholder="https://..." />
+            </el-form-item>
+
+            <div class="row-2">
+              <el-form-item label="方法" label-width="86px">
+                <el-select v-model="curlForm.method" style="width:100%">
+                  <el-option v-for="m in ['GET','POST','PUT','DELETE','PATCH']" :key="m" :label="m" :value="m" />
+                </el-select>
+              </el-form-item>
+              <el-form-item label="超时(秒)" label-width="86px">
+                <el-input-number
+                  v-model="curlForm.timeout" :min="1" :max="600"
+                  placeholder="默认 60" style="width:100%" controls-position="right"
+                />
+              </el-form-item>
+            </div>
+
+            <el-form-item label="缓存表名">
+              <el-input v-model="curlForm.target_collection" placeholder="my_api_data" />
+            </el-form-item>
+            <el-form-item label="处理方式">
+              <el-select v-model="curlForm.handler_type" style="width:100%">
+                <el-option label="纯JSON" value="PURE_JSON" />
+                <el-option label="嵌套data" value="NESTED_DATA" />
+                <el-option label="原始响应" value="RAW_RESPONSE" />
+              </el-select>
+            </el-form-item>
+          </el-form>
+        </section>
+
+        <!-- 右栏: Headers + Params + Body -->
+        <section class="form-col">
+          <div class="form-col-title">Headers / Params / Body</div>
+          <el-form label-width="0" label-position="top">
+            <el-form-item label="Headers (JSON)">
+              <el-input
+                v-model="curlForm.headers"
+                type="textarea" :rows="6"
+                placeholder='{"Authorization": "Bearer ..."}'
+                class="mono-input"
+              />
+            </el-form-item>
+            <el-form-item label="Params (URL query, JSON)">
+              <el-input
+                v-model="curlForm.params"
+                type="textarea" :rows="5"
+                placeholder='{"page": 1, "size": 20}'
+                class="mono-input"
+              />
+            </el-form-item>
+            <el-form-item label="Body">
+              <el-input
+                v-model="curlForm.data"
+                type="textarea" :rows="6"
+                placeholder="JSON / form / raw"
+                class="mono-input"
+              />
+            </el-form-item>
+          </el-form>
+        </section>
+      </div>
+
       <el-alert
         title="提示"
         description="创建后请到「定时调度」页为该任务配置触发周期 (间隔/Cron)，否则不会自动执行。"
@@ -347,3 +405,44 @@ onMounted(() => tasks.load())
     </el-dialog>
   </div>
 </template>
+
+<style scoped>
+/* curl 表单两栏布局: 左基本信息, 右 Headers/Body */
+.curl-form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+}
+.form-col {
+  min-width: 0;
+}
+.form-col-title {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  margin: 0 0 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+/* 同一行并排两个 form-item */
+.row-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.row-2 :deep(.el-form-item) {
+  margin-bottom: 18px;
+}
+/* 等宽字体的 textarea (Headers/Body) */
+.mono-input :deep(.el-textarea__inner) {
+  font-family: 'Geist Mono', 'JetBrains Mono', 'SF Mono', Menlo, monospace;
+  font-size: 12px;
+  line-height: 1.55;
+}
+/* 窄屏 → 单栏堆叠 */
+@media (max-width: 860px) {
+  .curl-form-grid { grid-template-columns: 1fr; }
+}
+</style>

@@ -34,6 +34,7 @@ export interface CurlHandlerConfig {
   url: string
   method: string
   headers: Record<string, string>
+  params?: Record<string, any> | null
   data: Record<string, any> | string | null
   handler_type: 'PURE_JSON' | 'NESTED_DATA' | 'RAW_RESPONSE'
   target_collection: string
