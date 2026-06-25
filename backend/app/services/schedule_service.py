@@ -67,8 +67,10 @@ def compute_next_run(sched: JobSchedule, base: datetime | None = None) -> dateti
         week = args.get("day_of_week", "*")
         expr = f"{minute} {hour} {day} {month} {week}"
         try:
-            cron = croniter(expr, base)
-            return cron.get_next(datetime)
+            local_base = base.astimezone()
+            cron = croniter(expr, local_base)
+            next_local = cron.get_next(datetime)
+            return next_local.astimezone(timezone.utc)
         except Exception as e:
             logger.warning("invalid cron expr", expr=expr, error=str(e))
             return None
