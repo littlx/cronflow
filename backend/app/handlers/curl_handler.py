@@ -23,6 +23,9 @@ data 序列化策略 (按 Content-Type 决定):
 """
 from __future__ import annotations
 
+import time
+import uuid
+from datetime import datetime, timedelta
 from typing import Any
 
 import httpx
@@ -58,6 +61,37 @@ def _process_response(handler_type: str, status_code: int, body):
     return {"_value": body, "_status": status_code}
 
 
+def _replace_placeholders(val: Any) -> Any:
+    """递归替换占位符（如 {{ now }}、{{ today }} 等）。"""
+    if isinstance(val, str):
+        now_dt = datetime.now()  # 本地时间
+        replacements = {
+            "{{ now }}": now_dt.strftime("%Y-%m-%d %H:%M:%S"),
+            "{{ NOW }}": now_dt.strftime("%Y-%m-%d %H:%M:%S"),
+            "{{ now_iso }}": now_dt.astimezone().isoformat(),
+            "{{ NOW_ISO }}": now_dt.astimezone().isoformat(),
+            "{{ today }}": now_dt.strftime("%Y-%m-%d"),
+            "{{ TODAY }}": now_dt.strftime("%Y-%m-%d"),
+            "{{ yesterday }}": (now_dt - timedelta(days=1)).strftime("%Y-%m-%d"),
+            "{{ YESTERDAY }}": (now_dt - timedelta(days=1)).strftime("%Y-%m-%d"),
+            "{{ tomorrow }}": (now_dt + timedelta(days=1)).strftime("%Y-%m-%d"),
+            "{{ TOMORROW }}": (now_dt + timedelta(days=1)).strftime("%Y-%m-%d"),
+            "{{ timestamp }}": str(int(time.time())),
+            "{{ TIMESTAMP }}": str(int(time.time())),
+            "{{ uuid }}": str(uuid.uuid4()),
+            "{{ UUID }}": str(uuid.uuid4()),
+        }
+        res = val
+        for k, v in replacements.items():
+            res = res.replace(k, v)
+        return res
+    elif isinstance(val, dict):
+        return {k: _replace_placeholders(v) for k, v in val.items()}
+    elif isinstance(val, list):
+        return [_replace_placeholders(x) for x in val]
+    return val
+
+
 class CurlHandler(TaskHandler):
     kind = "curl"
 
@@ -68,6 +102,9 @@ class CurlHandler(TaskHandler):
         task_args: dict[str, Any],
     ) -> HandlerResult:
         cfg = resolved.handler_config or {}
+        # 实时解析占位符
+        cfg = _replace_placeholders(cfg)
+
         url = cfg.get("url") or ""
         method = (cfg.get("method") or "GET").upper()
         headers = dict(cfg.get("headers") or {})  # copy: 下方可能改写 Content-Type
