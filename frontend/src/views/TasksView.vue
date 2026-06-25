@@ -6,7 +6,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Upload } from '@element-plus/icons-vue'
+import { Plus, Upload, QuestionFilled } from '@element-plus/icons-vue'
 import { useTasksStore } from '@/stores/tasks'
 import { triggerTask } from '@/api/tasks'
 import { parseCurl } from '@/utils/curl'
@@ -283,10 +283,18 @@ onMounted(() => tasks.load())
     <!-- curl 任务编辑/新建 -->
     <el-dialog
       v-model="curlDlgVisible"
-      :title="editingId ? '编辑 cURL 任务' : '新建 cURL 任务'"
       width="960px"
       destroy-on-close
     >
+      <template #header>
+        <div style="display: flex; align-items: center; gap: 6px;">
+          <span style="font-size: 16px; font-weight: 600;">{{ editingId ? '编辑 cURL 任务' : '新建 cURL 任务' }}</span>
+          <el-tooltip content="创建后请到「定时调度」页为该任务配置触发周期 (间隔/Cron)，否则不会自动执行。" placement="top" effect="dark">
+            <el-icon style="cursor: pointer; color: var(--el-text-color-secondary); font-size: 14px;"><QuestionFilled /></el-icon>
+          </el-tooltip>
+        </div>
+      </template>
+
       <div class="curl-form-grid">
         <!-- 左栏: 基本信息 -->
         <section class="form-col">
@@ -331,22 +339,21 @@ onMounted(() => tasks.load())
 
         <!-- 右栏: Headers + Params + Body -->
         <section class="form-col">
-          <div class="form-col-title">Headers / Params / Body</div>
-          <el-alert
-            title="支持实时动态参数占位符"
-            type="info"
-            :closable="false"
-            show-icon
-            style="margin-bottom: 12px"
-          >
-            <div v-pre style="font-size:11px;line-height:1.6;color:var(--el-text-color-regular)">
-              可在输入框值中填入占位符，运行时自动替换：<br/>
-              • <code>{{ now }}</code>: 本地当前时间 (如 2026-06-25 16:16:44)<br/>
-              • <code>{{ now_iso }}</code>: ISO 时间 | <code>{{ timestamp }}</code>: 时间戳<br/>
-              • <code>{{ today }}</code> / <code>{{ yesterday }}</code> / <code>{{ tomorrow }}</code>: 日期<br/>
-              • <code>{{ uuid }}</code>: 随机 UUID 串
-            </div>
-          </el-alert>
+          <div class="form-col-title" style="display: flex; align-items: center; gap: 6px;">
+            <span>Headers / Params / Body</span>
+            <el-tooltip placement="top" effect="dark">
+              <template #content>
+                <div v-pre style="font-size:11px;line-height:1.6">
+                  可在输入框值中填入占位符，运行时自动替换：<br/>
+                  • <code>{{ now }}</code>: 本地当前时间 (如 2026-06-25 16:16:44)<br/>
+                  • <code>{{ now_iso }}</code>: ISO 时间 | <code>{{ timestamp }}</code>: 时间戳<br/>
+                  • <code>{{ today }}</code> / <code>{{ yesterday }}</code> / <code>{{ tomorrow }}</code>: 日期<br/>
+                  • <code>{{ uuid }}</code>: 随机 UUID 串
+                </div>
+              </template>
+              <el-icon style="cursor: pointer; color: var(--el-text-color-secondary); font-size: 13px;"><QuestionFilled /></el-icon>
+            </el-tooltip>
+          </div>
           <el-form label-width="0" label-position="top">
             <el-form-item label="Headers (JSON)">
               <el-input
@@ -376,11 +383,6 @@ onMounted(() => tasks.load())
         </section>
       </div>
 
-      <el-alert
-        title="提示"
-        description="创建后请到「定时调度」页为该任务配置触发周期 (间隔/Cron)，否则不会自动执行。"
-        type="info" show-icon :closable="false" style="margin-top:8px"
-      />
       <template #footer>
         <el-button @click="curlDlgVisible = false">取消</el-button>
         <el-button type="primary" @click="submitCurl">{{ editingId ? '更新' : '创建' }}</el-button>
