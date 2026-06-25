@@ -6,14 +6,15 @@
   - 显示 socket 连接状态
 -->
 <script setup lang="ts">
-import { onMounted } from 'vue'
+import { onMounted, ref } from 'vue'
 import { RouterLink, RouterView } from 'vue-router'
 import { useSocketConnected, useSocketListener } from '@/composables/useSocket'
 import { useStatsStore } from '@/stores/stats'
-import { Monitor, Cpu, Calendar, Document, Coin, Bell, DataLine } from '@element-plus/icons-vue'
+import { Monitor, Cpu, Calendar, Document, Coin, Bell, DataLine, Fold, Expand } from '@element-plus/icons-vue'
 
 const stats = useStatsStore()
 const connected = useSocketConnected()
+const collapsed = ref(false)
 
 useSocketListener('stats_update', (payload: any) => stats.apply(payload))
 useSocketListener('new_log', (log: any) => stats.pushLog(log))
@@ -25,8 +26,10 @@ onMounted(() => {
 
 <template>
   <div class="app-shell">
-    <aside class="app-sidebar">
-      <div class="brand">CronFlow</div>
+    <aside class="app-sidebar" :class="{ collapsed }">
+      <div class="brand">
+        <span>CronFlow</span>
+      </div>
       <RouterLink class="nav-item" to="/dashboard">
         <el-icon><Monitor /></el-icon>
         <span>监控中心</span>
@@ -56,10 +59,19 @@ onMounted(() => {
         <span>指标</span>
       </RouterLink>
       <div style="flex:1"></div>
+      
+      <button class="nav-item toggle-btn" @click="collapsed = !collapsed">
+        <el-icon>
+          <Fold v-if="!collapsed" />
+          <Expand v-else />
+        </el-icon>
+        <span>收起导航</span>
+      </button>
+
       <div style="padding:12px 12px 4px;border-top:1px solid var(--border)">
         <span class="conn-indicator" :class="{ online: connected }">
           <span class="dot"></span>
-          {{ connected ? 'WebSocket 已连接' : 'WebSocket 断开' }}
+          <span>{{ connected ? 'WebSocket 已连接' : 'WebSocket 断开' }}</span>
         </span>
       </div>
     </aside>
@@ -68,3 +80,52 @@ onMounted(() => {
     </main>
   </div>
 </template>
+
+<style scoped>
+.app-sidebar {
+  transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1), padding 0.3s ease;
+}
+
+.app-sidebar.collapsed {
+  width: 64px;
+  padding: 16px 8px;
+}
+
+.app-sidebar.collapsed :deep(.brand) {
+  justify-content: center;
+  gap: 0;
+}
+
+.app-sidebar.collapsed :deep(.brand span) {
+  display: none;
+}
+
+.app-sidebar.collapsed :deep(.nav-item) {
+  justify-content: center;
+  padding: 8px 0;
+  margin: 4px 0;
+}
+
+.app-sidebar.collapsed :deep(.nav-item span) {
+  display: none;
+}
+
+.app-sidebar.collapsed :deep(.conn-indicator) {
+  justify-content: center;
+}
+
+.app-sidebar.collapsed :deep(.conn-indicator span:not(.dot)) {
+  display: none;
+}
+
+.toggle-btn {
+  background: transparent;
+  cursor: pointer;
+  border: none;
+  width: 100%;
+  text-align: left;
+  outline: none;
+  font-family: inherit;
+  margin-bottom: 8px;
+}
+</style>
