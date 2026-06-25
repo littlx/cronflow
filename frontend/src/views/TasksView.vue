@@ -332,6 +332,21 @@ onMounted(() => tasks.load())
         <!-- 右栏: Headers + Params + Body -->
         <section class="form-col">
           <div class="form-col-title">Headers / Params / Body</div>
+          <el-alert
+            title="支持实时动态参数占位符"
+            type="info"
+            :closable="false"
+            show-icon
+            style="margin-bottom: 12px"
+          >
+            <div v-pre style="font-size:11px;line-height:1.6;color:var(--el-text-color-regular)">
+              可在输入框值中填入占位符，运行时自动替换：<br/>
+              • <code>{{ now }}</code>: 本地当前时间 (如 2026-06-25 16:16:44)<br/>
+              • <code>{{ now_iso }}</code>: ISO 时间 | <code>{{ timestamp }}</code>: 时间戳<br/>
+              • <code>{{ today }}</code> / <code>{{ yesterday }}</code> / <code>{{ tomorrow }}</code>: 日期<br/>
+              • <code>{{ uuid }}</code>: 随机 UUID 串
+            </div>
+          </el-alert>
           <el-form label-width="0" label-position="top">
             <el-form-item label="Headers (JSON)">
               <el-input
