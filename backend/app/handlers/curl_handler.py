@@ -54,8 +54,12 @@ def _process_response(handler_type: str, status_code: int, body):
     if isinstance(body, (dict, list)):
         if handler_type == "NESTED_DATA" and isinstance(body, dict):
             for key in ("data", "result", "items", "list", "results"):
-                if key in body and isinstance(body[key], (list, dict)):
-                    return body[key]
+                if key in body:
+                    val = body[key]
+                    if isinstance(val, (list, dict)):
+                        return val
+                    if val is None:
+                        return []
         return body
     # 标量 (bool/int/str/None): 包一层保留类型, 不丢信息
     return {"_value": body, "_status": status_code}

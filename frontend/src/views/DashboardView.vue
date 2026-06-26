@@ -8,10 +8,15 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
 import { Setting, ArrowRight, Cpu, Refresh } from '@element-plus/icons-vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { useStatsStore } from '@/stores/stats'
 import { useTasksStore } from '@/stores/tasks'
+import { useSchedulesStore } from '@/stores/schedules'
 import { useSocketListener } from '@/composables/useSocket'
+import { listLogs } from '@/api/logs'
+import TaskPicker from '@/components/TaskPicker.vue'
+import ParamForm from '@/components/ParamForm.vue'
+import CronInput from '@/components/CronInput.vue'
 import { getCacheView } from '@/api/cacheViews'
 import { getLatestCache } from '@/api/cache'
 import { triggerTask } from '@/api/tasks'
@@ -20,10 +25,11 @@ import { getByPath, formatCellValue } from '@/utils/cacheFormat'
 import StatusTag from '@/components/StatusTag.vue'
 import LogTerminal from '@/components/LogTerminal.vue'
 import type { TaskLog, CacheViewConfig } from '@/api/types'
-import { formatDateTime, formatDuration } from '@/utils/format'
+import { formatDateTime, formatDuration, timeUntil } from '@/utils/format'
 
 const stats = useStatsStore()
 const tasks = useTasksStore()
+const schedules = useSchedulesStore()
 
 const terminalVisible = ref(false)
 const selectedLog = ref<TaskLog | null>(null)
@@ -34,6 +40,245 @@ function showDetail(row: TaskLog) {
 
 function triggerLabel(t: string) {
   return { interval: '间隔', cron: 'Cron', manual: '手动' }[t] || t
+}
+
+function nameOf(ref: string): string {
+  return tasks.byRef(ref)?.name ?? ref
+}
+
+function fmtTrigger(s: any): string {
+  if (s.trigger_type === 'interval') {
+    let baseStr = 'interval'
+    for (const k of ['seconds', 'minutes', 'hours', 'days']) {
+      if (s.trigger_args[k]) {
+        const units: Record<string, string> = { seconds: '秒', minutes: '分钟', hours: '小时', days: '天' }
+        baseStr = `每 ${s.trigger_args[k]} ${units[k]}`
+        break
+      }
+    }
+    if (s.trigger_args.start_time && s.trigger_args.end_time) {
+      baseStr += ` (${s.trigger_args.start_time}~${s.trigger_args.end_time})`
+    }
+    return baseStr
+  }
+  const a = s.trigger_args
+  return `cron: ${a.minute || '*'} ${a.hour || '*'} ${a.day || '*'} ${a.month || '*'} ${a.day_of_week || '*'}`
+}
+
+async function toggleSchedule(s: any) {
+  try {
+    await schedules.toggle(s.id)
+    ElMessage.success(`${s.enabled ? '已禁用' : '已启用'}调度`)
+  } catch (e: any) {
+    ElMessage.error(e.message)
+  }
+}
+
+// --- 任务调度/日志 无限滚动 (鼠标滚动获取下一页) ---
+const logsList = ref<TaskLog[]>([])
+const logsLimit = 20
+const logsOffset = ref(0)
+const logsLoading = ref(false)
+const logsHasMore = ref(true)
+
+async function loadNextLogsPage() {
+  if (logsLoading.value || !logsHasMore.value) return
+  logsLoading.value = true
+  try {
+    const data = await listLogs({
+      limit: logsLimit,
+      offset: logsOffset.value
+    })
+    const items = data.items || []
+    if (items.length < logsLimit) {
+      logsHasMore.value = false
+    }
+    if (logsOffset.value === 0) {
+      logsList.value = items
+    } else {
+      logsList.value.push(...items)
+    }
+    logsOffset.value += items.length
+  } catch (e: any) {
+    console.error('Failed to load logs', e)
+  } finally {
+    logsLoading.value = false
+  }
+}
+
+function resetLogs() {
+  logsList.value = []
+  logsOffset.value = 0
+  logsHasMore.value = true
+  loadNextLogsPage()
+}
+
+const schedulesLimit = 20
+const schedulesVisibleCount = ref(20)
+
+const visibleSchedules = computed(() => {
+  return schedules.items.slice(0, schedulesVisibleCount.value)
+})
+
+const schedulesHasMore = computed(() => {
+  return schedulesVisibleCount.value < schedules.items.length
+})
+
+function loadNextSchedulesPage() {
+  if (schedulesHasMore.value) {
+    schedulesVisibleCount.value += schedulesLimit
+  }
+}
+
+watch(() => schedules.items, () => {
+  if (schedulesVisibleCount.value < 20) {
+    schedulesVisibleCount.value = 20
+  }
+})
+
+const logsTableRef = ref<any>(null)
+const schedulesTableRef = ref<any>(null)
+
+function attachScrollListeners() {
+  if (logsTableRef.value) {
+    const scrollEl = logsTableRef.value.$el.querySelector('.el-scrollbar__wrap')
+    if (scrollEl && !scrollEl._scrollListenerAttached) {
+      scrollEl.addEventListener('scroll', () => {
+        if (scrollEl.scrollHeight - scrollEl.scrollTop <= scrollEl.clientHeight + 20) {
+          loadNextLogsPage()
+        }
+      })
+      scrollEl._scrollListenerAttached = true
+    }
+  }
+  if (schedulesTableRef.value) {
+    const scrollEl = schedulesTableRef.value.$el.querySelector('.el-scrollbar__wrap')
+    if (scrollEl && !scrollEl._scrollListenerAttached) {
+      scrollEl.addEventListener('scroll', () => {
+        if (scrollEl.scrollHeight - scrollEl.scrollTop <= scrollEl.clientHeight + 20) {
+          loadNextSchedulesPage()
+        }
+      })
+      scrollEl._scrollListenerAttached = true
+    }
+  }
+}
+
+// --- 新建/编辑/删除 调度管理 ---
+const scheduleDialogVisible = ref(false)
+const scheduleIsEdit = ref(false)
+const currentScheduleId = ref<number | null>(null)
+
+const scheduleEnableTimeRange = ref(false)
+const scheduleTimeRange = ref<[string, string]>(['08:00', '17:00'])
+
+const scheduleForm = ref({
+  task_ref: '',
+  name: '',
+  trigger_type: 'interval' as 'interval' | 'cron',
+  interval_minutes: 5,
+  trigger_args_cron: { minute: '*/5', hour: '*', day: '*', month: '*', day_of_week: '*' } as Record<string, any>,
+  task_args: {} as Record<string, any>,
+  enabled: true,
+})
+
+const selectedScheduleTask = computed(() => tasks.byRef(scheduleForm.value.task_ref))
+
+function openCreate() {
+  scheduleIsEdit.value = false
+  currentScheduleId.value = null
+  scheduleEnableTimeRange.value = false
+  scheduleTimeRange.value = ['08:00', '17:00']
+  scheduleForm.value = {
+    task_ref: '', name: '',
+    trigger_type: 'interval',
+    interval_minutes: 5,
+    trigger_args_cron: { minute: '*/5', hour: '*', day: '*', month: '*', day_of_week: '*' },
+    task_args: {},
+    enabled: true,
+  }
+  scheduleDialogVisible.value = true
+}
+
+function openEdit(s: any) {
+  scheduleIsEdit.value = true
+  currentScheduleId.value = s.id
+  
+  let minutes = 5
+  if (s.trigger_type === 'interval') {
+    minutes = s.trigger_args.minutes ?? 5
+  }
+
+  if (s.trigger_type === 'interval' && s.trigger_args.start_time && s.trigger_args.end_time) {
+    scheduleEnableTimeRange.value = true
+    scheduleTimeRange.value = [s.trigger_args.start_time, s.trigger_args.end_time]
+  } else {
+    scheduleEnableTimeRange.value = false
+    scheduleTimeRange.value = ['08:00', '17:00']
+  }
+
+  const task_args = s.task_args ? JSON.parse(JSON.stringify(s.task_args)) : {}
+
+  scheduleForm.value = {
+    task_ref: s.task_ref,
+    name: s.name,
+    trigger_type: s.trigger_type,
+    interval_minutes: minutes,
+    trigger_args_cron: s.trigger_type === 'cron' ? { ...s.trigger_args } : { minute: '*/5', hour: '*', day: '*', month: '*', day_of_week: '*' },
+    task_args,
+    enabled: s.enabled,
+  }
+  scheduleDialogVisible.value = true
+}
+
+async function submitSchedule() {
+  if (!scheduleForm.value.task_ref) { ElMessage.error('请选择任务'); return }
+  if (!scheduleForm.value.name) scheduleForm.value.name = selectedScheduleTask.value?.name ?? scheduleForm.value.task_ref
+
+  const trigger_args = scheduleForm.value.trigger_type === 'interval'
+    ? {
+        minutes: scheduleForm.value.interval_minutes,
+        start_time: scheduleEnableTimeRange.value && scheduleTimeRange.value ? scheduleTimeRange.value[0] : null,
+        end_time: scheduleEnableTimeRange.value && scheduleTimeRange.value ? scheduleTimeRange.value[1] : null,
+      }
+    : scheduleForm.value.trigger_args_cron
+
+  try {
+    if (scheduleIsEdit.value) {
+      if (currentScheduleId.value === null) return
+      await schedules.update(currentScheduleId.value, {
+        name: scheduleForm.value.name,
+        trigger_type: scheduleForm.value.trigger_type,
+        trigger_args,
+        task_args: scheduleForm.value.task_args,
+        enabled: scheduleForm.value.enabled,
+      })
+      ElMessage.success('已更新调度')
+    } else {
+      await schedules.create({
+        task_ref: scheduleForm.value.task_ref,
+        name: scheduleForm.value.name,
+        trigger_type: scheduleForm.value.trigger_type,
+        trigger_args,
+        task_args: scheduleForm.value.task_args,
+        enabled: scheduleForm.value.enabled,
+      })
+      ElMessage.success('已创建调度')
+    }
+    scheduleDialogVisible.value = false
+    schedules.load()
+  } catch (e: any) {
+    ElMessage.error(e.message)
+  }
+}
+
+async function removeSchedule(s: any) {
+  try {
+    await ElMessageBox.confirm(`确定删除调度 "${s.name}"?`, '确认', { type: 'warning' })
+    await schedules.remove(s.id)
+    ElMessage.success('已删除')
+    schedules.load()
+  } catch { /* cancel */ }
 }
 
 // ---- 缓存数据展示选择 ----
@@ -238,6 +483,20 @@ useSocketListener('curl_changed', () => {
   loadAllChosenData()
 })
 
+useSocketListener('schedule_changed', () => {
+  schedules.load()
+})
+
+useSocketListener('new_log', (log: TaskLog) => {
+  const idx = logsList.value.findIndex(l => l.id === log.id)
+  if (idx >= 0) {
+    logsList.value.splice(idx, 1, log)
+  } else {
+    logsList.value.unshift(log)
+    logsOffset.value += 1
+  }
+})
+
 const allViewConfigs = ref<Record<string, CacheViewConfig>>({})
 
 async function loadAllViewConfigs() {
@@ -342,11 +601,19 @@ onMounted(async () => {
     activeConfigCol.value = sidebarCollections.value[0]
   }
   
-  await Promise.all([loadAllChosenData(), loadAllViewConfigs()])
+  await Promise.all([loadAllChosenData(), loadAllViewConfigs(), schedules.load(), resetLogs()])
   
   setTimeout(() => {
     isInitialized = true
   }, 100)
+  
+  setTimeout(attachScrollListeners, 600)
+})
+
+watch(() => stats.ready, (ready) => {
+  if (ready) {
+    setTimeout(attachScrollListeners, 400)
+  }
 })
 </script>
 
@@ -408,7 +675,7 @@ onMounted(async () => {
               </div>
             </div>
             
-            <div v-loading="cacheTables[item.collection]?.loading" style="padding-bottom: 20px;">
+            <div v-loading="cacheTables[item.collection]?.loading">
               <el-empty v-if="cacheTables[item.collection]?.notFound" description="暂无缓存数据" size="small" style="padding:10px 0" />
               <template v-else-if="cacheTables[item.collection]?.viewConfig">
                 <div class="dashboard-table-container">
@@ -443,29 +710,84 @@ onMounted(async () => {
           </div>
         </div>
 
-        <div class="recent-logs-section" style="margin-top: 24px;">
-          <h3 style="margin:0 0 16px;font-size:14px;font-weight:600">最近日志</h3>
-          <el-empty v-if="!stats.logs.length" description="暂无日志" />
-          <el-table v-else :data="stats.logs" size="small" class="recent-logs-table">
-            <el-table-column prop="task_name" label="任务" min-width="160" />
-            <el-table-column label="状态" width="100">
-              <template #default="{ row }"><StatusTag :status="row.status" /></template>
-            </el-table-column>
-            <el-table-column label="触发" width="100">
-              <template #default="{ row }">{{ triggerLabel(row.trigger_type) }}</template>
-            </el-table-column>
-            <el-table-column label="耗时" width="100">
-              <template #default="{ row }">{{ formatDuration(row.duration) }}</template>
-            </el-table-column>
-            <el-table-column label="开始时间" min-width="180">
-              <template #default="{ row }">{{ formatDateTime(row.started_at) }}</template>
-            </el-table-column>
-            <el-table-column label="操作" width="100" fixed="right">
-              <template #default="{ row }">
-                <el-button size="small" type="primary" link @click="showDetail(row)">查看详情</el-button>
-              </template>
-            </el-table-column>
-          </el-table>
+        <div class="bottom-sections-row" style="margin-top: 24px; display: flex; gap: 24px; flex-wrap: wrap;">
+          <!-- 任务调度 (50%) -->
+          <div class="recent-schedules-section" style="flex: 1 1 calc(50% - 12px); min-width: 300px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+              <h3 style="margin:0;font-size:14px;font-weight:600">任务调度</h3>
+              <el-button size="small" type="primary" link @click="openCreate">新增</el-button>
+            </div>
+            <el-empty v-if="!schedules.items.length" description="暂无调度" />
+            <el-table
+              v-else
+              ref="schedulesTableRef"
+              :data="visibleSchedules"
+              height="350"
+              size="small"
+              class="recent-schedules-table"
+            >
+              <el-table-column label="任务" min-width="140">
+                <template #default="{ row }">
+                  {{ nameOf(row.task_ref) }}
+                </template>
+              </el-table-column>
+              <el-table-column label="触发" min-width="120">
+                <template #default="{ row }">
+                  {{ fmtTrigger(row) }}
+                </template>
+              </el-table-column>
+              <el-table-column label="下次运行" min-width="160">
+                <template #default="{ row }">
+                  <template v-if="row.next_run_time">
+                    <div>{{ formatDateTime(row.next_run_time) }}</div>
+                    <small style="color:var(--el-text-color-secondary)">({{ timeUntil(row.next_run_time) }})</small>
+                  </template>
+                  <span v-else>-</span>
+                </template>
+              </el-table-column>
+              <el-table-column label="状态" width="70">
+                <template #default="{ row }">
+                  <el-switch :model-value="row.enabled" size="small" @change="toggleSchedule(row)" />
+                </template>
+              </el-table-column>
+              <el-table-column label="操作" width="90" fixed="right">
+                <template #default="{ row }">
+                  <el-button size="small" type="primary" link @click="openEdit(row)">编辑</el-button>
+                  <el-button size="small" type="danger" link @click="removeSchedule(row)">删除</el-button>
+                </template>
+              </el-table-column>
+            </el-table>
+          </div>
+
+          <!-- 最近日志 (50%) -->
+          <div class="recent-logs-section" style="flex: 1 1 calc(50% - 12px); min-width: 300px;">
+            <h3 style="margin:0 0 16px;font-size:14px;font-weight:600">最近日志</h3>
+            <el-empty v-if="!logsList.length" description="暂无日志" />
+            <el-table
+              v-else
+              ref="logsTableRef"
+              :data="logsList"
+              height="350"
+              size="small"
+              class="recent-logs-table"
+            >
+              <el-table-column prop="task_name" label="任务" min-width="120" />
+              <el-table-column label="状态" width="80">
+                <template #default="{ row }"><StatusTag :status="row.status" /></template>
+              </el-table-column>
+              <el-table-column label="耗时" width="80">
+                <template #default="{ row }">{{ formatDuration(row.duration) }}</template>
+              </el-table-column>
+              <el-table-column label="开始时间" min-width="150">
+                <template #default="{ row }">{{ formatDateTime(row.started_at) }}</template>
+              </el-table-column>
+              <el-table-column label="操作" width="80" fixed="right">
+                <template #default="{ row }">
+                  <el-button size="small" type="primary" link @click="showDetail(row)">查看详情</el-button>
+                </template>
+              </el-table-column>
+            </el-table>
+          </div>
         </div>
       </template>
     </el-skeleton>
@@ -477,6 +799,54 @@ onMounted(async () => {
       destroy-on-close
     >
       <LogTerminal :log="selectedLog" />
+    </el-dialog>
+
+    <!-- 新建/编辑调度对话框 -->
+    <el-dialog v-model="scheduleDialogVisible" :title="scheduleIsEdit ? '编辑调度' : '新建调度'" width="640px" destroy-on-close>
+      <el-form label-width="100px">
+        <el-form-item label="任务" required>
+          <TaskPicker v-model="scheduleForm.task_ref" :disabled="scheduleIsEdit" @update:model-value="scheduleForm.name = nameOf(scheduleForm.task_ref)" />
+        </el-form-item>
+        <el-form-item label="名称"><el-input v-model="scheduleForm.name" placeholder="不填则用任务名" /></el-form-item>
+        <el-form-item label="触发类型">
+          <el-radio-group v-model="scheduleForm.trigger_type">
+            <el-radio-button value="interval">间隔</el-radio-button>
+            <el-radio-button value="cron">Cron</el-radio-button>
+          </el-radio-group>
+        </el-form-item>
+        <el-form-item v-if="scheduleForm.trigger_type === 'interval'" label="间隔">
+          <el-input-number v-model="scheduleForm.interval_minutes" :min="1" /> 分钟
+        </el-form-item>
+        <el-form-item v-if="scheduleForm.trigger_type === 'interval'" label="限时间段">
+          <el-switch v-model="scheduleEnableTimeRange" active-text="仅在设定时间段内运行" />
+        </el-form-item>
+        <el-form-item v-if="scheduleForm.trigger_type === 'interval' && scheduleEnableTimeRange" label="起止时间" required>
+          <el-time-picker
+            v-model="scheduleTimeRange"
+            is-range
+            range-separator="至"
+            start-placeholder="开始时间"
+            end-placeholder="结束时间"
+            format="HH:mm"
+            value-format="HH:mm"
+            style="width: 240px"
+          />
+        </el-form-item>
+        <el-form-item v-else-if="scheduleForm.trigger_type === 'cron'" label="Cron 表达式">
+          <CronInput v-model="scheduleForm.trigger_args_cron" />
+        </el-form-item>
+        <el-form-item
+          v-if="selectedScheduleTask?.kind === 'python' && selectedScheduleTask.parameters.length"
+          label="任务参数"
+        >
+          <ParamForm :parameters="selectedScheduleTask.parameters" v-model="scheduleForm.task_args" />
+        </el-form-item>
+        <el-form-item label="启用"><el-switch v-model="scheduleForm.enabled" /></el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="scheduleDialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="submitSchedule">{{ scheduleIsEdit ? '保存' : '创建' }}</el-button>
+      </template>
     </el-dialog>
 
     <!-- 配置要展示的表格 -->
@@ -687,6 +1057,10 @@ onMounted(async () => {
 .cache-table-wrapper {
   min-width: 0;
   box-sizing: border-box;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  background: var(--surface);
 }
 .width-third {
   flex: 0 0 calc(33.333% - 13.33px);
@@ -825,12 +1199,15 @@ onMounted(async () => {
 .col-checkbox {
   margin-right: 0 !important;
 }
+.recent-schedules-table,
 .recent-logs-table {
   border: none !important;
 }
+.recent-schedules-table :deep(.el-table__inner-wrapper::before),
 .recent-logs-table :deep(.el-table__inner-wrapper::before) {
   display: none !important;
 }
+.recent-schedules-table :deep(.el-table__cell),
 .recent-logs-table :deep(.el-table__cell) {
   padding: 6px 0 !important;
 }
