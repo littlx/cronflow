@@ -15,6 +15,7 @@ import { useSocketListener } from '@/composables/useSocket'
 import { getCacheView } from '@/api/cacheViews'
 import { getLatestCache } from '@/api/cache'
 import { triggerTask } from '@/api/tasks'
+import { getDashboardConfig, upsertDashboardConfig } from '@/api/dashboard'
 import { getByPath, formatCellValue } from '@/utils/cacheFormat'
 import StatusTag from '@/components/StatusTag.vue'
 import LogTerminal from '@/components/LogTerminal.vue'
@@ -41,7 +42,7 @@ const activeConfigCol = ref<string | null>(null)
 
 interface DashboardTableConfig {
   collection: string
-  width: 'half' | 'full'
+  width: 'third' | 'half' | 'full'
   visibleColumns: string[]
 }
 
@@ -55,6 +56,67 @@ const allCollections = computed(() => {
   }
   return Array.from(set)
 })
+
+const sidebarCollections = computed(() => {
+  const orderedList: string[] = []
+  const set = new Set<string>()
+  for (const t of chosenTables.value) {
+    if (!set.has(t.collection)) {
+      set.add(t.collection)
+      orderedList.push(t.collection)
+    }
+  }
+  for (const col of allCollections.value) {
+    if (!set.has(col)) {
+      set.add(col)
+      orderedList.push(col)
+    }
+  }
+  return orderedList
+})
+
+const dragIndex = ref<number | null>(null)
+const dragOverIndex = ref<number | null>(null)
+
+function onDragStart(index: number) {
+  dragIndex.value = index
+}
+
+function onDragOver(event: DragEvent) {
+  event.preventDefault()
+}
+
+function onDragEnter(index: number) {
+  dragOverIndex.value = index
+}
+
+function onDragLeave() {
+  dragOverIndex.value = null
+}
+
+function onDrop(index: number) {
+  if (dragIndex.value === null || dragIndex.value === index) {
+    dragIndex.value = null
+    dragOverIndex.value = null
+    return
+  }
+  
+  const dragCol = sidebarCollections.value[dragIndex.value]
+  const targetCol = sidebarCollections.value[index]
+  
+  const dragIdxInChosen = chosenTables.value.findIndex(t => t.collection === dragCol)
+  const targetIdxInChosen = chosenTables.value.findIndex(t => t.collection === targetCol)
+  
+  if (dragIdxInChosen !== -1 && targetIdxInChosen !== -1) {
+    const arr = [...chosenTables.value]
+    const [removed] = arr.splice(dragIdxInChosen, 1)
+    arr.splice(targetIdxInChosen, 0, removed)
+    chosenTables.value = arr
+  }
+  
+  dragIndex.value = null
+  dragOverIndex.value = null
+}
 
 interface CacheTableData {
   collection: string
@@ -138,6 +200,20 @@ async function triggerCollectionTasks(col: string) {
   }
 }
 
+let isInitialized = false
+let saveTimeout: ReturnType<typeof setTimeout> | null = null
+
+async function saveAndCloseSettings() {
+  settingsVisible.value = false
+  if (saveTimeout) clearTimeout(saveTimeout)
+  try {
+    await upsertDashboardConfig({ config: chosenTables.value })
+  } catch (e: any) {
+    console.error('Failed to save dashboard config to backend:', e)
+    ElMessage.error('保存展示表格配置失败: ' + e.message)
+  }
+}
+
 async function loadAllChosenData() {
   await Promise.all(chosenTables.value.map(item => loadCacheTableData(item.collection)))
 }
@@ -145,6 +221,17 @@ async function loadAllChosenData() {
 watch(chosenTables, () => {
   localStorage.setItem('dashboard_visible_tables_config', JSON.stringify(chosenTables.value))
   loadAllChosenData()
+  
+  if (isInitialized) {
+    if (saveTimeout) clearTimeout(saveTimeout)
+    saveTimeout = setTimeout(async () => {
+      try {
+        await upsertDashboardConfig({ config: chosenTables.value })
+      } catch (e: any) {
+        console.error('Failed to save dashboard config to backend:', e)
+      }
+    }, 1000)
+  }
 }, { deep: true })
 
 useSocketListener('curl_changed', () => {
@@ -186,7 +273,7 @@ function toggleTableSelection(col: string, val: any) {
   }
 }
 
-function getTableWidth(col: string): 'half' | 'full' {
+function getTableWidth(col: string): 'third' | 'half' | 'full' {
   const t = chosenTables.value.find(t => t.collection === col)
   return t ? t.width : 'full'
 }
@@ -219,30 +306,47 @@ function getVisibleColumnsForTable(item: DashboardTableConfig) {
 onMounted(async () => {
   await tasks.load()
   
-  const saved = localStorage.getItem('dashboard_visible_tables_config')
-  if (saved) {
-    try {
-      chosenTables.value = JSON.parse(saved)
-    } catch {
-      chosenTables.value = []
+  let loaded = false
+  try {
+    const backendConfig = await getDashboardConfig()
+    if (backendConfig && backendConfig.config && backendConfig.config.length > 0) {
+      chosenTables.value = backendConfig.config
+      loaded = true
     }
-  } else {
-    // 默认展示第一个存在的缓存表
-    if (allCollections.value.length > 0) {
-      const firstCol = allCollections.value[0]
-      chosenTables.value = [{
-        collection: firstCol,
-        width: 'full',
-        visibleColumns: []
-      }]
+  } catch (e) {
+    console.error('Failed to load dashboard config from backend:', e)
+  }
+
+  if (!loaded) {
+    const saved = localStorage.getItem('dashboard_visible_tables_config')
+    if (saved) {
+      try {
+        chosenTables.value = JSON.parse(saved)
+      } catch {
+        chosenTables.value = []
+      }
+    } else {
+      // 默认展示第一个存在的缓存表
+      if (allCollections.value.length > 0) {
+        const firstCol = allCollections.value[0]
+        chosenTables.value = [{
+          collection: firstCol,
+          width: 'full',
+          visibleColumns: []
+        }]
+      }
     }
   }
   
-  if (allCollections.value.length > 0) {
-    activeConfigCol.value = allCollections.value[0]
+  if (sidebarCollections.value.length > 0) {
+    activeConfigCol.value = sidebarCollections.value[0]
   }
   
   await Promise.all([loadAllChosenData(), loadAllViewConfigs()])
+  
+  setTimeout(() => {
+    isInitialized = true
+  }, 100)
 })
 </script>
 
@@ -262,7 +366,10 @@ onMounted(async () => {
             v-else
             v-for="item in chosenTables"
             :key="item.collection"
-            :class="['cache-table-wrapper', item.width === 'half' ? 'width-half' : 'width-full']"
+            :class="[
+              'cache-table-wrapper',
+              item.width === 'third' ? 'width-third' : item.width === 'half' ? 'width-half' : 'width-full'
+            ]"
           >
             <div class="cache-table-header">
               <div class="cache-table-meta-left">
@@ -286,11 +393,11 @@ onMounted(async () => {
                     <el-button
                       size="small"
                       type="primary"
-                      :icon="Cpu"
+                      link
                       :disabled="!associatedTasks(item.collection).length"
                       :loading="cacheTables[item.collection]?.triggerLoading"
                       @click="triggerCollectionTasks(item.collection)"
-                    >更新缓存</el-button>
+                    >更新</el-button>
                   </span>
                 </el-tooltip>
                 <router-link :to="`/cache?collection=${item.collection}`" style="margin-left: 8px;">
@@ -380,17 +487,44 @@ onMounted(async () => {
           <div class="sidebar-title">缓存数据表</div>
           <div class="sidebar-list">
             <div
-              v-for="col in allCollections"
+              v-for="(col, index) in sidebarCollections"
               :key="col"
-              :class="['sidebar-item', activeConfigCol === col ? 'is-active' : '']"
+              :class="[
+                'sidebar-item',
+                activeConfigCol === col ? 'is-active' : '',
+                isTableSelected(col) ? 'is-draggable' : '',
+                dragOverIndex === index && isTableSelected(col) ? 'drag-over' : ''
+              ]"
+              :draggable="isTableSelected(col)"
+              @dragstart="onDragStart(index)"
+              @dragover="onDragOver"
+              @dragenter="onDragEnter(index)"
+              @dragleave="onDragLeave"
+              @drop="onDrop(index)"
               @click="activeConfigCol = col"
             >
+              <!-- 拖动手柄 (仅对选中的表格展示) -->
+              <span v-if="isTableSelected(col)" class="drag-handle" style="margin-right: 4px; display: flex; align-items: center; color: var(--muted); opacity: 0.6;">
+                <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
+                  <path d="M5 3a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0zm5 0a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0zm5 0a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0zM5 8a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0zm5 0a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0zm5 0a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0zm-10 5a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0zm5 0a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0zm5 0a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0z"/>
+                </svg>
+              </span>
+              
               <el-checkbox
                 :model-value="isTableSelected(col)"
                 @change="(val: any) => toggleTableSelection(col, val)"
                 @click.stop
               />
-              <span class="sidebar-item-label">{{ col }}</span>
+              <span class="sidebar-item-label" style="text-overflow: ellipsis; overflow: hidden; white-space: nowrap; max-width: 120px;" :title="col">{{ col }}</span>
+              <el-tag
+                v-if="!allCollections.includes(col)"
+                type="danger"
+                size="small"
+                effect="light"
+                style="margin-left: 8px; height: 18px; line-height: 16px; padding: 0 4px;"
+              >
+                已失效
+              </el-tag>
             </div>
           </div>
         </div>
@@ -411,6 +545,7 @@ onMounted(async () => {
                   @change="(val: any) => setTableWidth(activeConfigCol!, val)"
                   size="default"
                 >
+                  <el-radio-button value="third">1/3 宽度 (33%)</el-radio-button>
                   <el-radio-button value="half">1/2 宽度 (50%)</el-radio-button>
                   <el-radio-button value="full">整行展示 (100%)</el-radio-button>
                 </el-radio-group>
@@ -453,7 +588,7 @@ onMounted(async () => {
       </div>
 
       <template #footer>
-        <el-button type="primary" @click="settingsVisible = false">确定</el-button>
+        <el-button type="primary" @click="saveAndCloseSettings">确定</el-button>
       </template>
     </el-dialog>
   </div>
@@ -537,6 +672,9 @@ onMounted(async () => {
   min-width: 0;
   box-sizing: border-box;
 }
+.width-third {
+  flex: 0 0 calc(33.333% - 13.33px);
+}
 .width-half {
   flex: 0 0 calc(50% - 10px);
 }
@@ -544,6 +682,7 @@ onMounted(async () => {
   flex: 0 0 100%;
 }
 @media (max-width: 768px) {
+  .width-third,
   .width-half {
     flex: 0 0 100%;
   }
@@ -603,6 +742,18 @@ onMounted(async () => {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.sidebar-item.is-draggable {
+  user-select: none;
+}
+.sidebar-item.is-draggable .drag-handle {
+  cursor: grab;
+}
+.sidebar-item.is-draggable:active {
+  cursor: grabbing;
+}
+.sidebar-item.drag-over {
+  background: rgba(64, 158, 255, 0.15) !important;
+}
 .settings-detail {
   flex: 1;
   padding: 16px;
@@ -649,19 +800,14 @@ onMounted(async () => {
 .columns-selector-grid {
   max-height: 200px;
   overflow-y: auto;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 10px;
-  background: var(--accents-1);
 }
 .dialog-checkbox-group {
   display: flex;
-  flex-direction: column;
-  gap: 8px;
+  flex-wrap: wrap;
+  gap: 10px 16px;
 }
 .col-checkbox {
-  margin-right: 15px !important;
-  margin-bottom: 4px;
+  margin-right: 0 !important;
 }
 .recent-logs-table {
   border: none !important;

@@ -165,3 +165,22 @@ export interface NotificationLog {
   message: string | null
   created_at: string | null
 }
+
+// ---- 监控中心看板配置 ----
+
+export interface DashboardTableConfig {
+  collection: string
+  width: 'third' | 'half' | 'full'
+  visibleColumns: string[]
+}
+
+export interface DashboardConfig {
+  username: string
+  config: DashboardTableConfig[]
+  created_at?: string | null
+  updated_at?: string | null
+}
+
+export interface DashboardConfigUpsert {
+  config: DashboardTableConfig[]
+}

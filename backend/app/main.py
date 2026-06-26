@@ -39,6 +39,7 @@ from app.core.logging import get_logger, setup_logging
 from app.routers import (
     cache,
     cache_views,
+    dashboard,
     health,
     logs,
     metrics,
@@ -146,6 +147,7 @@ def create_fastapi() -> FastAPI:
     fastapi_app.include_router(schedules.router)
     fastapi_app.include_router(cache.router)
     fastapi_app.include_router(cache_views.router)
+    fastapi_app.include_router(dashboard.router)
     fastapi_app.include_router(notifications.router)
     fastapi_app.include_router(metrics.router)
 

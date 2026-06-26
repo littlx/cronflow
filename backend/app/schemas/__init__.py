@@ -3,6 +3,11 @@ from app.schemas.cache_view import (
     CacheViewConfigOut,
     CacheViewConfigUpsert,
 )
+from app.schemas.dashboard_config import (
+    DashboardConfigOut,
+    DashboardConfigUpsert,
+    DashboardTableConfigSchema,
+)
 from app.schemas.notification import (
     NotificationConfigCreate,
     NotificationConfigOut,
@@ -26,4 +31,5 @@ __all__ = [
     "NotificationConfigCreate", "NotificationConfigOut",
     "NotificationConfigUpdate", "NotificationLogOut",
     "CacheColumnConfig", "CacheViewConfigOut", "CacheViewConfigUpsert",
+    "DashboardConfigOut", "DashboardConfigUpsert", "DashboardTableConfigSchema",
 ]
