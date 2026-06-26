@@ -9,7 +9,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Upload, QuestionFilled } from '@element-plus/icons-vue'
 import { useTasksStore } from '@/stores/tasks'
 import { triggerTask } from '@/api/tasks'
-import { parseCurl } from '@/utils/curl'
+import { parseCurl, stringifyToCurl } from '@/utils/curl'
 import ParamForm from '@/components/ParamForm.vue'
 import type { Task, CacheItem } from '@/api/types'
 
@@ -95,6 +95,41 @@ function openEdit(t: Task) {
     timeout: cfg.timeout ?? null,
   }
   curlDlgVisible.value = true
+}
+
+function openCopy(t: Task) {
+  editingId.value = null
+  const cfg = t.handler_config || {}
+  curlForm.value = {
+    name: t.name + '_copy',
+    description: t.description || '',
+    url: cfg.url || '',
+    method: cfg.method || 'GET',
+    headers: JSON.stringify(cfg.headers || {}, null, 2),
+    params: JSON.stringify(cfg.params || {}, null, 2),
+    data: cfg.data ? (typeof cfg.data === 'string' ? cfg.data : JSON.stringify(cfg.data, null, 2)) : '',
+    handler_type: cfg.handler_type || 'PURE_JSON',
+    target_collection: cfg.target_collection ? (cfg.target_collection + '_copy') : '',
+    timeout: cfg.timeout ?? null,
+  }
+  curlDlgVisible.value = true
+}
+
+async function copyCurlCommand(t: Task) {
+  const cfg = t.handler_config || {}
+  const cmd = stringifyToCurl({
+    url: cfg.url || '',
+    method: cfg.method || 'GET',
+    headers: cfg.headers,
+    params: cfg.params,
+    data: cfg.data,
+  })
+  try {
+    await navigator.clipboard.writeText(cmd)
+    ElMessage.success('cURL 命令已复制到剪贴板')
+  } catch (err) {
+    ElMessage.error('复制失败')
+  }
 }
 
 async function submitCurl() {
@@ -256,11 +291,13 @@ onMounted(() => tasks.load())
                 <el-table-column label="处理" width="120">
                   <template #default="{ row }">{{ row.handler_config?.handler_type }}</template>
                 </el-table-column>
-                <el-table-column label="操作" width="300" fixed="right">
+                <el-table-column label="操作" width="360" fixed="right">
                   <template #default="{ row }">
                     <el-button size="small" type="primary" link @click="openTrigger(row)">触发</el-button>
                     <el-button size="small" type="primary" link @click="preview(row)">预览缓存</el-button>
                     <el-button size="small" type="primary" link @click="openEdit(row)">编辑</el-button>
+                    <el-button size="small" type="primary" link @click="openCopy(row)">复制</el-button>
+                    <el-button size="small" type="primary" link @click="copyCurlCommand(row)">复制 cURL</el-button>
                     <el-button size="small" type="danger" link @click="removeCurl(row)">删除</el-button>
                   </template>
                 </el-table-column>

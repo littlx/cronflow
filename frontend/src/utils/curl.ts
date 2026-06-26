@@ -219,3 +219,55 @@ function extractQueryToParams(
   }
   return base + hash
 }
+
+/**
+ * 把任务的配置反向生成为 curl 命令
+ */
+export function stringifyToCurl(cfg: {
+  url: string
+  method: string
+  headers?: Record<string, string>
+  params?: Record<string, any>
+  data?: any
+}): string {
+  let fullUrl = cfg.url || ''
+  if (cfg.params && Object.keys(cfg.params).length > 0) {
+    const q = new URLSearchParams()
+    for (const [k, v] of Object.entries(cfg.params)) {
+      if (k && v !== undefined && v !== null) {
+        q.append(k, String(v))
+      }
+    }
+    const queryString = q.toString()
+    if (queryString) {
+      fullUrl += (fullUrl.includes('?') ? '&' : '?') + queryString
+    }
+  }
+
+  let cmd = `curl '${fullUrl}'`
+  if (cfg.method && cfg.method.toUpperCase() !== 'GET') {
+    cmd += ` -X ${cfg.method.toUpperCase()}`
+  }
+
+  if (cfg.headers) {
+    for (const [k, v] of Object.entries(cfg.headers)) {
+      cmd += ` -H '${k}: ${v}'`
+    }
+  }
+
+  if (cfg.data) {
+    let dataStr = ''
+    if (typeof cfg.data === 'string') {
+      dataStr = cfg.data
+    } else {
+      dataStr = JSON.stringify(cfg.data)
+    }
+    if (dataStr) {
+      const escapedData = dataStr.replace(/'/g, "'\\''")
+      cmd += ` -d '${escapedData}'`
+    }
+  }
+
+  return cmd
+}
+
