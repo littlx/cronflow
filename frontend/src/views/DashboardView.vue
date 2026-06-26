@@ -7,7 +7,7 @@
 -->
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
-import { Setting, ArrowRight, Cpu } from '@element-plus/icons-vue'
+import { Setting, ArrowRight, Cpu, Refresh } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { useStatsStore } from '@/stores/stats'
 import { useTasksStore } from '@/stores/tasks'
@@ -372,21 +372,20 @@ onMounted(async () => {
             ]"
           >
             <div class="cache-table-header">
-              <div class="cache-table-meta-left">
-                <h4 class="cache-table-title">{{ item.collection }}</h4>
-                <span v-if="cacheTables[item.collection] && !cacheTables[item.collection].loading && !cacheTables[item.collection].notFound" class="cache-meta-info">
+              <div class="cache-table-meta-left" style="display: flex; align-items: center; gap: 8px;">
+                <span v-if="cacheTables[item.collection] && !cacheTables[item.collection].loading && !cacheTables[item.collection].notFound && cacheTables[item.collection].rows" class="row-count-badge">
+                  {{ cacheTables[item.collection].rows.length }}
+                </span>
+                <h4 class="cache-table-title" style="margin: 0;">{{ item.collection }}</h4>
+                <span v-if="cacheTables[item.collection] && !cacheTables[item.collection].loading && !cacheTables[item.collection].notFound" class="cache-meta-info" style="margin-left: 8px;">
                   <span v-if="cacheTables[item.collection].createdAt">
-                    缓存时间: <b>{{ formatDateTime(cacheTables[item.collection].createdAt) }}</b>
-                  </span>
-                  <span v-if="cacheTables[item.collection].rows">
-                    总行数: <b>{{ cacheTables[item.collection].rows.length }}</b>
+                    <b>{{ formatDateTime(cacheTables[item.collection].createdAt) }}</b>
                   </span>
                 </span>
               </div>
               <div class="cache-table-actions">
                 <el-tooltip
-                  content="未找到与该缓存表关联的 cURL 任务"
-                  :disabled="associatedTasks(item.collection).length > 0"
+                  :content="associatedTasks(item.collection).length ? '更新缓存' : '未找到与该缓存表关联的 cURL 任务'"
                   placement="top"
                 >
                   <span>
@@ -394,15 +393,18 @@ onMounted(async () => {
                       size="small"
                       type="primary"
                       link
+                      :icon="Refresh"
                       :disabled="!associatedTasks(item.collection).length"
                       :loading="cacheTables[item.collection]?.triggerLoading"
                       @click="triggerCollectionTasks(item.collection)"
-                    >更新</el-button>
+                    />
                   </span>
                 </el-tooltip>
-                <router-link :to="`/cache?collection=${item.collection}`" style="margin-left: 8px;">
-                  <el-button size="small" type="primary" link>查看全部 <el-icon><ArrowRight /></el-icon></el-button>
-                </router-link>
+                <el-tooltip content="查看全部数据" placement="top">
+                  <router-link :to="`/cache?collection=${item.collection}`" style="margin-left: 8px;">
+                    <el-button size="small" type="primary" link :icon="ArrowRight" />
+                  </router-link>
+                </el-tooltip>
               </div>
             </div>
             
@@ -427,9 +429,7 @@ onMounted(async () => {
                     </tbody>
                   </table>
                 </div>
-                <div v-if="cacheTables[item.collection].rows.length > 5" class="more-hint">
-                  仅展示前 5 条，共 {{ cacheTables[item.collection].rows.length }} 条数据。
-                </div>
+
               </template>
               <template v-else>
                 <div style="padding: 20px 0; text-align: center; color: var(--el-text-color-secondary); font-size: 13px;">
@@ -618,6 +618,22 @@ onMounted(async () => {
   gap: 14px;
   font-size: 11px;
   color: var(--muted);
+}
+.row-count-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 600;
+  height: 20px;
+  min-width: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--accents-1);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  font-family: 'Geist Mono', 'JetBrains Mono', monospace;
+  box-sizing: border-box;
 }
 .dashboard-table-container {
   overflow-x: auto;
@@ -817,5 +833,8 @@ onMounted(async () => {
 }
 .recent-logs-table :deep(.el-table__cell) {
   padding: 6px 0 !important;
+}
+.page-container {
+  max-width: 100% !important;
 }
 </style>
