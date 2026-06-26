@@ -6,16 +6,23 @@
   数据全部来自 useStatsStore (全局 socket + 初始 fetch), 本组件无独立请求。
 -->
 <script setup lang="ts">
-import { ref } from 'vue'
-import { Calendar, CircleCheck, Clock, Odometer, Cpu } from '@element-plus/icons-vue'
+import { ref, computed, onMounted, watch } from 'vue'
+import { Setting, ArrowRight, Cpu } from '@element-plus/icons-vue'
+import { ElMessage } from 'element-plus'
 import { useStatsStore } from '@/stores/stats'
-import MetricCard from '@/components/MetricCard.vue'
+import { useTasksStore } from '@/stores/tasks'
+import { useSocketListener } from '@/composables/useSocket'
+import { getCacheView } from '@/api/cacheViews'
+import { getLatestCache } from '@/api/cache'
+import { triggerTask } from '@/api/tasks'
+import { getByPath, formatCellValue } from '@/utils/cacheFormat'
 import StatusTag from '@/components/StatusTag.vue'
 import LogTerminal from '@/components/LogTerminal.vue'
-import type { TaskLog } from '@/api/types'
+import type { TaskLog, CacheViewConfig } from '@/api/types'
 import { formatDateTime, formatDuration } from '@/utils/format'
 
 const stats = useStatsStore()
+const tasks = useTasksStore()
 
 const terminalVisible = ref(false)
 const selectedLog = ref<TaskLog | null>(null)
@@ -27,45 +34,312 @@ function showDetail(row: TaskLog) {
 function triggerLabel(t: string) {
   return { interval: '间隔', cron: 'Cron', manual: '手动' }[t] || t
 }
+
+// ---- 缓存数据展示选择 ----
+const settingsVisible = ref(false)
+const activeConfigCol = ref<string | null>(null)
+
+interface DashboardTableConfig {
+  collection: string
+  width: 'half' | 'full'
+  visibleColumns: string[]
+}
+
+const chosenTables = ref<DashboardTableConfig[]>([])
+
+const allCollections = computed(() => {
+  const set = new Set<string>()
+  for (const t of tasks.curl) {
+    const c = t.handler_config?.target_collection
+    if (c) set.add(c)
+  }
+  return Array.from(set)
+})
+
+interface CacheTableData {
+  collection: string
+  loading: boolean
+  notFound: boolean
+  viewConfig: CacheViewConfig | null
+  rows: any[]
+  createdAt: string | null
+  triggerLoading: boolean
+}
+const cacheTables = ref<Record<string, CacheTableData>>({})
+
+async function loadCacheTableData(col: string) {
+  if (!cacheTables.value[col]) {
+    cacheTables.value[col] = {
+      collection: col,
+      loading: true,
+      notFound: false,
+      viewConfig: null,
+      rows: [],
+      createdAt: null,
+      triggerLoading: false
+    }
+  }
+  const item = cacheTables.value[col]
+  item.loading = true
+  item.notFound = false
+  try {
+    const [cfg, cache] = await Promise.all([
+      getCacheView(col).catch(() => null),
+      getLatestCache(col).catch(() => null)
+    ])
+    item.viewConfig = cfg
+    if (cache) {
+      item.createdAt = cache.created_at
+      if (cache.document) {
+        const sub = getByPath(cache.document, cfg?.row_path || '')
+        if (Array.isArray(sub)) {
+          item.rows = sub
+        } else if (sub != null) {
+          item.rows = [sub]
+        } else {
+          item.rows = []
+        }
+      } else {
+        item.rows = []
+      }
+    } else {
+      item.createdAt = null
+      item.rows = []
+      item.notFound = true
+    }
+  } catch (e) {
+    item.notFound = true
+  } finally {
+    item.loading = false
+  }
+}
+
+const associatedTasks = (col: string) => {
+  return tasks.items.filter(t => t.kind === 'curl' && t.handler_config?.target_collection === col)
+}
+
+async function triggerCollectionTasks(col: string) {
+  const list = associatedTasks(col)
+  if (!list.length) return
+  if (cacheTables.value[col]) {
+    cacheTables.value[col].triggerLoading = true
+  }
+  try {
+    await Promise.all(
+      list.map(t => triggerTask(t.ref, {}))
+    )
+    ElMessage.success(`已成功手动触发 ${list.length} 个关联任务以更新缓存`)
+  } catch (e: any) {
+    ElMessage.error(e.message)
+  } finally {
+    if (cacheTables.value[col]) {
+      cacheTables.value[col].triggerLoading = false
+    }
+  }
+}
+
+async function loadAllChosenData() {
+  await Promise.all(chosenTables.value.map(item => loadCacheTableData(item.collection)))
+}
+
+watch(chosenTables, () => {
+  localStorage.setItem('dashboard_visible_tables_config', JSON.stringify(chosenTables.value))
+  loadAllChosenData()
+}, { deep: true })
+
+useSocketListener('curl_changed', () => {
+  loadAllChosenData()
+})
+
+const allViewConfigs = ref<Record<string, CacheViewConfig>>({})
+
+async function loadAllViewConfigs() {
+  await Promise.all(
+    allCollections.value.map(async (col) => {
+      try {
+        const cfg = await getCacheView(col)
+        if (cfg) {
+          allViewConfigs.value[col] = cfg
+        }
+      } catch {
+        // ignore
+      }
+    })
+  )
+}
+
+function isTableSelected(col: string): boolean {
+  return chosenTables.value.some(t => t.collection === col)
+}
+
+function toggleTableSelection(col: string, val: any) {
+  if (val) {
+    if (!isTableSelected(col)) {
+      chosenTables.value.push({
+        collection: col,
+        width: 'full',
+        visibleColumns: []
+      })
+    }
+  } else {
+    chosenTables.value = chosenTables.value.filter(t => t.collection !== col)
+  }
+}
+
+function getTableWidth(col: string): 'half' | 'full' {
+  const t = chosenTables.value.find(t => t.collection === col)
+  return t ? t.width : 'full'
+}
+
+function setTableWidth(col: string, width: any) {
+  const t = chosenTables.value.find(t => t.collection === col)
+  if (t) t.width = width
+}
+
+function getTableVisibleColumns(col: string): string[] {
+  const t = chosenTables.value.find(t => t.collection === col)
+  return t ? (t.visibleColumns || []) : []
+}
+
+function setTableVisibleColumns(col: string, columns: any) {
+  const t = chosenTables.value.find(t => t.collection === col)
+  if (t) t.visibleColumns = columns
+}
+
+function getVisibleColumnsForTable(item: DashboardTableConfig) {
+  const tableData = cacheTables.value[item.collection]
+  if (!tableData || !tableData.viewConfig) return []
+  const allCols = tableData.viewConfig.columns
+  if (!item.visibleColumns || item.visibleColumns.length === 0) {
+    return allCols
+  }
+  return allCols.filter(c => item.visibleColumns.includes(c.key))
+}
+
+onMounted(async () => {
+  await tasks.load()
+  
+  const saved = localStorage.getItem('dashboard_visible_tables_config')
+  if (saved) {
+    try {
+      chosenTables.value = JSON.parse(saved)
+    } catch {
+      chosenTables.value = []
+    }
+  } else {
+    // 默认展示第一个存在的缓存表
+    if (allCollections.value.length > 0) {
+      const firstCol = allCollections.value[0]
+      chosenTables.value = [{
+        collection: firstCol,
+        width: 'full',
+        visibleColumns: []
+      }]
+    }
+  }
+  
+  if (allCollections.value.length > 0) {
+    activeConfigCol.value = allCollections.value[0]
+  }
+  
+  await Promise.all([loadAllChosenData(), loadAllViewConfigs()])
+})
 </script>
 
 <template>
   <div class="page-container">
-    <h2 class="page-title">监控中心</h2>
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px">
+      <h2 class="page-title" style="margin:0">监控中心</h2>
+      <el-button :icon="Setting" size="default" @click="settingsVisible = true">配置展示表格</el-button>
+    </div>
 
     <el-skeleton :loading="!stats.ready" animated :rows="6">
       <template #default>
-        <div class="grid grid-4" style="margin-bottom:20px">
-          <MetricCard
-            label="活跃调度 / 总调度"
-            :value="`${stats.data?.active_schedules ?? '-'} / ${stats.data?.total_schedules ?? '-'}`"
-            :icon="Calendar"
-            variant="brand"
-          />
-          <MetricCard
-            label="执行成功率"
-            :value="`${stats.data?.success_rate ?? 0}%`"
-            :icon="CircleCheck"
-            variant="success"
-          />
-          <MetricCard
-            label="累计运行 / 运行中"
-            :value="`${stats.data?.total_runs ?? '-'} / ${stats.data?.running_runs ?? '-'}`"
-            :icon="Odometer"
-            variant="warning"
-          />
-          <MetricCard
-            label="CPU / 内存"
-            :value="`${stats.data?.system?.cpu_usage ?? '-'}% / ${stats.data?.system?.memory_usage ?? '-'}%`"
-            :icon="Cpu"
-            variant="info"
-          />
+        <!-- 选中的缓存数据表格 -->
+        <div class="cache-tables-grid" style="margin-bottom:24px">
+          <el-empty v-if="!chosenTables.length" description="未选择任何缓存表格，请点击右上角配置" />
+          <div
+            v-else
+            v-for="item in chosenTables"
+            :key="item.collection"
+            :class="['cache-table-wrapper', item.width === 'half' ? 'width-half' : 'width-full']"
+          >
+            <div class="cache-table-header">
+              <div class="cache-table-meta-left">
+                <h4 class="cache-table-title">{{ item.collection }}</h4>
+                <span v-if="cacheTables[item.collection] && !cacheTables[item.collection].loading && !cacheTables[item.collection].notFound" class="cache-meta-info">
+                  <span v-if="cacheTables[item.collection].createdAt">
+                    缓存时间: <b>{{ formatDateTime(cacheTables[item.collection].createdAt) }}</b>
+                  </span>
+                  <span v-if="cacheTables[item.collection].rows">
+                    总行数: <b>{{ cacheTables[item.collection].rows.length }}</b>
+                  </span>
+                </span>
+              </div>
+              <div class="cache-table-actions">
+                <el-tooltip
+                  content="未找到与该缓存表关联的 cURL 任务"
+                  :disabled="associatedTasks(item.collection).length > 0"
+                  placement="top"
+                >
+                  <span>
+                    <el-button
+                      size="small"
+                      type="primary"
+                      :icon="Cpu"
+                      :disabled="!associatedTasks(item.collection).length"
+                      :loading="cacheTables[item.collection]?.triggerLoading"
+                      @click="triggerCollectionTasks(item.collection)"
+                    >更新缓存</el-button>
+                  </span>
+                </el-tooltip>
+                <router-link :to="`/cache?collection=${item.collection}`" style="margin-left: 8px;">
+                  <el-button size="small" type="primary" link>查看全部 <el-icon><ArrowRight /></el-icon></el-button>
+                </router-link>
+              </div>
+            </div>
+            
+            <div v-loading="cacheTables[item.collection]?.loading" style="padding-bottom: 20px;">
+              <el-empty v-if="cacheTables[item.collection]?.notFound" description="暂无缓存数据" size="small" style="padding:10px 0" />
+              <template v-else-if="cacheTables[item.collection]?.viewConfig">
+                <div class="dashboard-table-container">
+                  <table class="dashboard-cols-table">
+                    <thead>
+                      <tr>
+                        <th v-for="c in getVisibleColumnsForTable(item)" :key="c.key">
+                          {{ c.label || c.key }}
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr v-for="(r, ri) in (cacheTables[item.collection].rows || []).slice(0, 5)" :key="ri">
+                        <td v-for="c in getVisibleColumnsForTable(item)" :key="c.key" class="preview-cell">
+                          {{ formatCellValue(getByPath(r, c.key), c.type) }}
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+                <div v-if="cacheTables[item.collection].rows.length > 5" class="more-hint">
+                  仅展示前 5 条，共 {{ cacheTables[item.collection].rows.length }} 条数据。
+                </div>
+              </template>
+              <template v-else>
+                <div style="padding: 20px 0; text-align: center; color: var(--el-text-color-secondary); font-size: 13px;">
+                  <span>尚未配置列定义。</span>
+                  <router-link :to="`/cache?collection=${item.collection}`">
+                    <el-button type="primary" link size="small" style="font-size: 13px;">去配置列定义</el-button>
+                  </router-link>
+                </div>
+              </template>
+            </div>
+          </div>
         </div>
 
-        <div class="panel">
+        <div class="recent-logs-section" style="margin-top: 24px;">
           <h3 style="margin:0 0 16px;font-size:14px;font-weight:600">最近日志</h3>
           <el-empty v-if="!stats.logs.length" description="暂无日志" />
-          <el-table v-else :data="stats.logs" size="small">
+          <el-table v-else :data="stats.logs" size="small" class="recent-logs-table">
             <el-table-column prop="task_name" label="任务" min-width="160" />
             <el-table-column label="状态" width="100">
               <template #default="{ row }"><StatusTag :status="row.status" /></template>
@@ -97,5 +371,305 @@ function triggerLabel(t: string) {
     >
       <LogTerminal :log="selectedLog" />
     </el-dialog>
+
+    <!-- 配置要展示的表格 -->
+    <el-dialog v-model="settingsVisible" title="配置监控中心数据表展示" width="800px" destroy-on-close>
+      <div class="settings-split-container">
+        <!-- 左侧: 缓存表列表 -->
+        <div class="settings-sidebar">
+          <div class="sidebar-title">缓存数据表</div>
+          <div class="sidebar-list">
+            <div
+              v-for="col in allCollections"
+              :key="col"
+              :class="['sidebar-item', activeConfigCol === col ? 'is-active' : '']"
+              @click="activeConfigCol = col"
+            >
+              <el-checkbox
+                :model-value="isTableSelected(col)"
+                @change="(val: any) => toggleTableSelection(col, val)"
+                @click.stop
+              />
+              <span class="sidebar-item-label">{{ col }}</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 右侧: 当前选中表的具体配置 -->
+        <div class="settings-detail">
+          <template v-if="activeConfigCol">
+            <div class="detail-title">
+              配置: <span class="highlight">{{ activeConfigCol }}</span>
+            </div>
+            
+            <div v-if="isTableSelected(activeConfigCol)" class="detail-body">
+              <!-- 宽度配置 -->
+              <div class="detail-section">
+                <div class="detail-section-title">卡片展示宽度</div>
+                <el-radio-group
+                  :model-value="getTableWidth(activeConfigCol)"
+                  @change="(val: any) => setTableWidth(activeConfigCol!, val)"
+                  size="default"
+                >
+                  <el-radio-button value="half">1/2 宽度 (50%)</el-radio-button>
+                  <el-radio-button value="full">整行展示 (100%)</el-radio-button>
+                </el-radio-group>
+              </div>
+
+              <!-- 显示列配置 -->
+              <div class="detail-section">
+                <div class="detail-section-title">要展示的列</div>
+                <div v-if="allViewConfigs[activeConfigCol]?.columns?.length" class="columns-selector-grid">
+                  <el-checkbox-group
+                    :model-value="getTableVisibleColumns(activeConfigCol)"
+                    @change="(val: any) => setTableVisibleColumns(activeConfigCol!, val)"
+                    class="dialog-checkbox-group"
+                  >
+                    <el-checkbox
+                      v-for="c in allViewConfigs[activeConfigCol].columns"
+                      :key="c.key"
+                      :value="c.key"
+                      class="col-checkbox"
+                    >
+                      {{ c.label || c.key }}
+                    </el-checkbox>
+                  </el-checkbox-group>
+                </div>
+                <div v-else class="detail-hint">
+                  此数据表尚未配置列定义，将默认显示全部推断出的列。
+                </div>
+              </div>
+            </div>
+            
+            <div v-else class="detail-empty-state">
+              <el-empty description="该数据表未启用，请在左侧勾选启用后再进行配置" :image-size="80" />
+            </div>
+          </template>
+          
+          <div v-else class="detail-empty-state">
+            <el-empty description="请从左侧选择一个数据表进行配置" :image-size="80" />
+          </div>
+        </div>
+      </div>
+
+      <template #footer>
+        <el-button type="primary" @click="settingsVisible = false">确定</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
+
+<style scoped>
+.cache-table-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+.cache-table-meta-left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.cache-table-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+.cache-meta-info {
+  display: flex;
+  gap: 14px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.dashboard-table-container {
+  overflow-x: auto;
+}
+.dashboard-cols-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.dashboard-cols-table th,
+.dashboard-cols-table td {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+.dashboard-cols-table th {
+  background: var(--accents-1);
+  color: var(--muted);
+  font-weight: 500;
+  text-align: left;
+}
+.dashboard-cols-table tr:last-child td {
+  border-bottom: none;
+}
+.preview-cell {
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: 'Geist Mono', 'JetBrains Mono', 'SF Mono', Menlo, monospace;
+}
+.more-hint {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 8px;
+  text-align: right;
+}
+.vertical-checkbox-group {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  border: 1px solid var(--border);
+  padding: 12px;
+  border-radius: var(--radius);
+}
+.cache-tables-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px;
+}
+.cache-table-wrapper {
+  min-width: 0;
+  box-sizing: border-box;
+}
+.width-half {
+  flex: 0 0 calc(50% - 10px);
+}
+.width-full {
+  flex: 0 0 100%;
+}
+@media (max-width: 768px) {
+  .width-half {
+    flex: 0 0 100%;
+  }
+}
+.settings-split-container {
+  display: flex;
+  height: 420px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: var(--card-bg);
+}
+.settings-sidebar {
+  width: 240px;
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  background: var(--accents-1);
+}
+.sidebar-title {
+  padding: 10px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  border-bottom: 1px solid var(--border);
+}
+.sidebar-list {
+  flex: 1;
+  overflow-y: auto;
+}
+.sidebar-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--border);
+  transition: background 0.15s ease;
+}
+.sidebar-item:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+.sidebar-item.is-active {
+  background: rgba(255, 255, 255, 0.08);
+}
+.sidebar-item :deep(.el-checkbox) {
+  margin-right: 0 !important;
+}
+.sidebar-item :deep(.el-checkbox__label) {
+  display: none !important;
+}
+.sidebar-item-label {
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.settings-detail {
+  flex: 1;
+  padding: 16px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.detail-title {
+  font-size: 15px;
+  font-weight: 600;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+.detail-title .highlight {
+  color: var(--el-color-primary);
+}
+.detail-body {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.detail-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.detail-section-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.detail-hint {
+  font-size: 12px;
+  color: var(--muted);
+  font-style: italic;
+}
+.detail-empty-state {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.columns-selector-grid {
+  max-height: 200px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px;
+  background: var(--accents-1);
+}
+.dialog-checkbox-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.col-checkbox {
+  margin-right: 15px !important;
+  margin-bottom: 4px;
+}
+.recent-logs-table {
+  border: none !important;
+}
+.recent-logs-table :deep(.el-table__inner-wrapper::before) {
+  display: none !important;
+}
+.recent-logs-table :deep(.el-table__cell) {
+  padding: 6px 0 !important;
+}
+</style>

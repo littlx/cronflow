@@ -9,6 +9,7 @@
 -->
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Refresh, Setting, View, Cpu, Download } from '@element-plus/icons-vue'
 import { getLatestCache } from '@/api/cache'
@@ -20,6 +21,8 @@ import { formatDateTime } from '@/utils/format'
 import { formatCellValue, getByPath } from '@/utils/cacheFormat'
 import CacheViewConfigDialog from '@/components/CacheViewConfigDialog.vue'
 import type { CacheItem, CacheViewConfig } from '@/api/types'
+
+const route = useRoute()
 
 const tasks = useTasksStore()
 
@@ -131,8 +134,15 @@ useSocketListener('curl_changed', () => {
 onMounted(async () => {
   if (!tasks.items.length) await tasks.load()
   suggestions.value = collectionsFromTasks()
-  if (suggestions.value.length) {
+  
+  const queryCol = route.query.collection as string
+  if (queryCol && suggestions.value.includes(queryCol)) {
+    collection.value = queryCol
+  } else if (suggestions.value.length) {
     collection.value = suggestions.value[0]
+  }
+
+  if (collection.value) {
     await onCollectionChange()
   }
 })

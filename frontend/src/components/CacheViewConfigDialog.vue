@@ -251,77 +251,79 @@ async function clearConfig() {
       </div>
 
       <el-empty v-if="!columns.length" description="尚未配置列, 点击添加列或从样本发现" />
-      <table v-else class="cols-table">
-        <thead>
-          <tr>
-            <th style="width:34%">字段 (key)</th>
-            <th style="width:22%">列名 (label)</th>
-            <th style="width:18%">类型</th>
-            <th style="width:12%">宽度</th>
-            <th style="width:14%">操作</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="(col, i) in columns" :key="i">
-            <td>
-              <el-select
-                v-model="col.key"
-                filterable allow-create default-first-option
-                placeholder="选择或输入 JSON 路径"
-                size="small"
-                style="width:100%"
-              >
-                <el-option v-for="p in discovered" :key="p" :label="p" :value="p" />
-              </el-select>
-            </td>
-            <td>
-              <el-input v-model="col.label" size="small" placeholder="表头显示名" />
-            </td>
-            <td>
-              <el-select v-model="col.type" size="small" style="width:100%">
-                <el-option
-                  v-for="t in TYPE_OPTIONS"
-                  :key="t.value"
-                  :label="t.label"
-                  :value="t.value"
-                />
-              </el-select>
-            </td>
-            <td>
-              <el-input-number
-                v-model="col.width"
-                :min="40" :max="800" :step="20"
-                size="small"
-                controls-position="right"
-                style="width:100%"
-              />
-            </td>
-            <td class="ops">
-              <el-button link size="small" :icon="ArrowUp" @click="moveUp(i)" />
-              <el-button link size="small" :icon="ArrowDown" @click="moveDown(i)" />
-              <el-button link size="small" type="danger" :icon="Delete" @click="removeColumn(i)" />
-            </td>
-          </tr>
-        </tbody>
-      </table>
-
-      <!-- 预览 -->
-      <div v-if="columns.length && previewRows.length" class="preview">
-        <div class="section-title" style="margin:14px 0 8px">预览 (前 3 行)</div>
+      <div v-else class="table-container">
         <table class="cols-table">
           <thead>
             <tr>
-              <th v-for="c in columns" :key="c.key">{{ c.label || c.key }}</th>
+              <th style="width:34%">字段 (key)</th>
+              <th style="width:22%">列名 (label)</th>
+              <th style="width:18%">类型</th>
+              <th style="width:12%">宽度</th>
+              <th style="width:14%">操作</th>
             </tr>
           </thead>
           <tbody>
-            <tr v-for="(r, i) in previewRows" :key="i">
-              <td v-for="c in columns" :key="c.key" class="preview-cell">
-                {{ formatCellValue(getByPath(r, c.key), c.type) }}
+            <tr v-for="(col, i) in columns" :key="i">
+              <td>
+                <el-input
+                  v-model="col.key"
+                  placeholder="选择或输入 JSON 路径"
+                  size="small"
+                  list="discovered-paths"
+                  style="width:100%"
+                />
+              </td>
+              <td>
+                <el-input v-model="col.label" size="small" placeholder="表头显示名" />
+              </td>
+              <td>
+                <el-select v-model="col.type" size="small" style="width:100%">
+                  <el-option
+                    v-for="t in TYPE_OPTIONS"
+                    :key="t.value"
+                    :label="t.label"
+                    :value="t.value"
+                  />
+                </el-select>
+              </td>
+              <td>
+                <el-input-number
+                  v-model="col.width"
+                  :min="40" :max="800" :step="20"
+                  size="small"
+                  controls-position="right"
+                  style="width:100%"
+                />
+              </td>
+              <td class="ops">
+                <el-button link size="small" :icon="ArrowUp" @click="moveUp(i)" />
+                <el-button link size="small" :icon="ArrowDown" @click="moveDown(i)" />
+                <el-button link size="small" type="danger" :icon="Delete" @click="removeColumn(i)" />
               </td>
             </tr>
           </tbody>
         </table>
+      </div>
+
+      <!-- 预览 -->
+      <div v-if="columns.length && previewRows.length" class="preview">
+        <div class="section-title" style="margin:14px 0 8px">预览 (前 3 行)</div>
+        <div class="table-container">
+          <table class="cols-table">
+            <thead>
+              <tr>
+                <th v-for="c in columns" :key="c.key">{{ c.label || c.key }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="(r, i) in previewRows" :key="i">
+                <td v-for="c in columns" :key="c.key" class="preview-cell">
+                  {{ formatCellValue(getByPath(r, c.key), c.type) }}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
 
@@ -340,6 +342,10 @@ async function clearConfig() {
         </div>
       </div>
     </template>
+
+    <datalist id="discovered-paths">
+      <option v-for="p in discovered" :key="p" :value="p" />
+    </datalist>
   </el-dialog>
 </template>
 
@@ -369,13 +375,16 @@ async function clearConfig() {
   justify-content: space-between;
   align-items: center;
 }
+.table-container {
+  max-height: 360px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
 .cols-table {
   width: 100%;
   border-collapse: collapse;
   font-size: 12.5px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  overflow: hidden;
 }
 .cols-table th,
 .cols-table td {
@@ -388,6 +397,9 @@ async function clearConfig() {
   color: var(--muted);
   font-weight: 500;
   text-align: left;
+  position: sticky;
+  top: 0;
+  z-index: 10;
 }
 .cols-table tr:last-child td {
   border-bottom: none;
