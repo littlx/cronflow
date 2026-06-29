@@ -39,9 +39,6 @@ class TaskLog(Base):
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     __table_args__ = (
-        Index("ix_task_logs_task_ref", "task_ref"),
-        Index("ix_task_logs_schedule_id", "schedule_id"),
-        Index("ix_task_logs_status", "status"),
         Index("ix_task_logs_started_at", "started_at"),
     )
 
