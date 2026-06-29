@@ -45,16 +45,4 @@ class JobSchedule(Base):
 
     __table_args__ = (Index("ix_schedules_enabled", "enabled"),)
 
-    def to_dict(self) -> dict:
-        return {
-            "id": self.id,
-            "task_ref": self.task_ref,
-            "name": self.name,
-            "trigger_type": self.trigger_type,
-            "trigger_args": self.trigger_args or {},
-            "task_args": self.task_args or {},
-            "enabled": self.enabled,
-            "next_run_time": self.next_run_time.isoformat() if self.next_run_time else None,
-            "created_at": self.created_at.isoformat() if self.created_at else None,
-            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
-        }
+

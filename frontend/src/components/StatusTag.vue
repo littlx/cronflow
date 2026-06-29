@@ -11,11 +11,13 @@ const TYPE: Record<string, 'success' | 'danger' | 'info' | 'warning' | 'primary'
   success: 'success',
   failed: 'danger',
   running: 'info',
+  pending: 'warning',
 }
 const LABEL: Record<string, string> = {
   success: '成功',
   failed: '失败',
   running: '运行中',
+  pending: '排队中',
 }
 
 const type = computed(() => TYPE[props.status] ?? 'warning')

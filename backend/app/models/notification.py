@@ -41,16 +41,9 @@ class NotificationConfig(Base):
     )
 
     def to_dict(self) -> dict:
-        return {
-            "id": self.id,
-            "name": self.name,
-            "channel": self.channel,
-            "config": self.config or {},
-            "events": self.events or [],
-            "enabled": self.enabled == "1" or self.enabled is True,
-            "created_at": self.created_at.isoformat() if self.created_at else None,
-            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
-        }
+        d = super().to_dict()
+        d["enabled"] = self.enabled == "1" or self.enabled is True
+        return d
 
 
 class NotificationLog(Base):
@@ -71,13 +64,4 @@ class NotificationLog(Base):
         DateTime, default=_utcnow, nullable=False
     )
 
-    def to_dict(self) -> dict:
-        return {
-            "id": self.id,
-            "config_id": self.config_id,
-            "event": self.event,
-            "task_log_id": self.task_log_id,
-            "status": self.status,
-            "message": self.message,
-            "created_at": self.created_at.isoformat() if self.created_at else None,
-        }
+

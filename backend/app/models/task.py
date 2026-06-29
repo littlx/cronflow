@@ -38,13 +38,4 @@ class Task(Base):
 
     __table_args__ = (Index("ix_tasks_kind", "kind"),)
 
-    def to_dict(self) -> dict:
-        return {
-            "id": self.id,
-            "kind": self.kind,
-            "name": self.name,
-            "description": self.description or "",
-            "handler_config": self.handler_config or {},
-            "created_at": self.created_at.isoformat() if self.created_at else None,
-            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
-        }
+

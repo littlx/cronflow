@@ -45,18 +45,4 @@ class TaskLog(Base):
         Index("ix_task_logs_started_at", "started_at"),
     )
 
-    def to_dict(self) -> dict:
-        return {
-            "id": self.id,
-            "task_ref": self.task_ref,
-            "task_name": self.task_name,
-            "trigger_type": self.trigger_type,
-            "schedule_id": self.schedule_id,
-            "status": self.status,
-            "attempt": self.attempt,
-            "started_at": self.started_at.isoformat() if self.started_at else None,
-            "finished_at": self.finished_at.isoformat() if self.finished_at else None,
-            "duration": self.duration,
-            "result": self.result,
-            "error": self.error,
-        }
+

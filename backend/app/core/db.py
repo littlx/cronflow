@@ -22,8 +22,33 @@ from sqlalchemy.orm import DeclarativeBase
 from app.core.config import settings
 
 
+from typing import Any
+
 class Base(DeclarativeBase):
     """所有 ORM 模型的基类。"""
+
+    def to_dict(self) -> dict[str, Any]:
+        """通用的 ORM 序列化为 dict 的方法。"""
+        out = {}
+        for column in self.__table__.columns:
+            val = getattr(self, column.name)
+            if isinstance(val, datetime):
+                out[column.name] = val.isoformat()
+            elif val is None:
+                try:
+                    py_type = column.type.python_type
+                except NotImplementedError:
+                    py_type = None
+
+                if py_type is dict:
+                    out[column.name] = {}
+                elif py_type is list:
+                    out[column.name] = []
+                else:
+                    out[column.name] = None
+            else:
+                out[column.name] = val
+        return out
 
 
 engine = create_async_engine(

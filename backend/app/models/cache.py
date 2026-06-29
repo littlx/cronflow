@@ -25,10 +25,4 @@ class CrawledDataCache(Base):
 
     __table_args__ = (Index("ix_cache_collection_created", "target_collection", "created_at"),)
 
-    def to_dict(self) -> dict:
-        return {
-            "id": self.id,
-            "target_collection": self.target_collection,
-            "document": self.document,
-            "created_at": self.created_at.isoformat() if self.created_at else None,
-        }
+

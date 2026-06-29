@@ -38,9 +38,9 @@ def _refresh_gauges(total_tasks: int, active_count: int) -> None:
 
 
 async def reconcile_running_logs(db: AsyncSession) -> int:
-    """启动 reconciliation: 把超时的 running 日志标 failed。
+    """启动 reconciliation: 把超时的 running 和 pending 日志标 failed。
 
-    判定: started_at 超过 task_default_timeout * (retry_max+1) 秒仍为 running,
+    判定: started_at 超过 task_default_timeout * (retry_max+1) 秒仍为 running 或 pending,
     视为进程崩溃残留, 标记 failed。
     返回修复的行数。
     """
@@ -49,9 +49,9 @@ async def reconcile_running_logs(db: AsyncSession) -> int:
     )
     result = await db.execute(
         update(TaskLog)
-        .where(TaskLog.status == "running")
+        .where(TaskLog.status.in_(["running", "pending"]))
         .where(TaskLog.started_at < threshold)
-        .values(status="failed", error="reconciled: process crash (running timeout)", finished_at=datetime.now(timezone.utc))
+        .values(status="failed", error="reconciled: process crash (running/pending timeout)", finished_at=datetime.now(timezone.utc))
     )
     await db.commit()
     return result.rowcount or 0
