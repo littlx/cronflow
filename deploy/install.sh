@@ -76,8 +76,18 @@ fi
 
 # ---- 6) 权限 ----
 echo "==> 设置权限"
-chown -R "$USER_NAME:$GROUP_NAME" "$PREFIX" "$DATA_DIR" "$ETC_DIR"
-# 数据目录可写, 安装目录只读
+# 代码安装目录归 root 所有, 仅提供只读/可执行权限
+chown -R root:root "$PREFIX"
+find "$PREFIX" -type d -exec chmod 755 {} \;
+find "$PREFIX" -type f -exec chmod 644 {} \;
+
+# 确保虚拟环境的可执行文件有执行权
+if [[ -d "$PREFIX/backend/.venv/bin" ]]; then
+    chmod 755 "$PREFIX/backend/.venv/bin"/*
+fi
+
+# 仅数据目录与配置目录归服务账号所有, 并具有读写权限
+chown -R "$USER_NAME:$GROUP_NAME" "$DATA_DIR" "$ETC_DIR"
 chmod 750 "$DATA_DIR" "$ETC_DIR"
 
 # ---- 7) systemd unit ----

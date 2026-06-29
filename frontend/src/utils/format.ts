@@ -56,3 +56,22 @@ export function formatDuration(seconds: number | null | undefined): string {
   const s = (seconds % 60).toFixed(1)
   return `${m}m${s}s`
 }
+
+/** 标准时间格式化 — 不做任何人为时区偏移处理，只做日期对象转换和格式化（适用于第三方数据） */
+export function formatPlainDateTime(iso: string | null | undefined): string {
+  if (!iso) return '-'
+  try {
+    let parsedIso = iso
+    if (iso.includes(' ') && !iso.includes('T')) {
+      parsedIso = iso.replace(' ', 'T')
+    }
+    const d = new Date(parsedIso)
+    if (isNaN(d.getTime())) return iso
+    const pad = (n: number) => String(n).padStart(2, '0')
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(
+      d.getHours()
+    )}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
+  } catch {
+    return iso
+  }
+}

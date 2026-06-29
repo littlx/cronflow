@@ -24,7 +24,7 @@ _TYPE_MAP = {
     dict: "dict",
 }
 
-_PARAM_DOC_RE = re.compile(r":param\s+\w+\s+(\w+):\s*(.+)")
+_PARAM_DOC_RE = re.compile(r":param\s+(?:\w+\s+)?(\w+):\s*(.+)")
 
 
 def _extract_param_docs(docstring: str | None) -> dict[str, str]:

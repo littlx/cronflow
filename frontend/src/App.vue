@@ -68,7 +68,7 @@ onMounted(() => {
         <span>收起导航</span>
       </button>
 
-      <div style="padding:12px 12px 4px;border-top:1px solid var(--border)">
+      <div class="sidebar-footer">
         <span class="conn-indicator" :class="{ online: connected }">
           <span class="dot"></span>
           <span>{{ connected ? 'WebSocket 已连接' : 'WebSocket 断开' }}</span>
@@ -110,8 +110,24 @@ onMounted(() => {
   display: none;
 }
 
+.sidebar-footer {
+  padding: 12px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  justify-content: flex-start;
+}
+
+.app-sidebar.collapsed .sidebar-footer {
+  padding: 12px 0;
+  justify-content: center;
+}
+
 .app-sidebar.collapsed :deep(.conn-indicator) {
   justify-content: center;
+  padding: 0;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
 }
 
 .app-sidebar.collapsed :deep(.conn-indicator span:not(.dot)) {

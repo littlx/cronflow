@@ -95,16 +95,20 @@ async function loadViewConfig() {
 }
 
 // ---- 加载 document ----
-async function load() {
+async function load(clearCurrent = true) {
   if (!collection.value.trim()) return
   loading.value = true
-  notFound.value = false
-  current.value = null
+  if (clearCurrent) {
+    notFound.value = false
+    current.value = null
+  }
   try {
     current.value = await getLatestCache(collection.value.trim())
+    notFound.value = false
   } catch (e: any) {
     if ((e?.message || '').includes('没有缓存数据') || (e?.message || '').includes('404')) {
       notFound.value = true
+      current.value = null
     } else {
       ElMessage.error(e.message)
     }
@@ -117,7 +121,7 @@ async function onCollectionChange() {
   // 切换 collection: 同时拉数据 + 列配置, 然后按是否有配置自动选模式。
   page.value = 1
   modeManuallyPicked.value = false
-  await Promise.all([load(), loadViewConfig()])
+  await Promise.all([load(true), loadViewConfig()])
   mode.value = viewConfig.value ? 'table' : 'json'
 }
 
@@ -128,7 +132,7 @@ function pinMode() {
 
 // curl 任务执行成功后会广播 curl_changed, 如果当前 collection 在被刷新自动重拉
 useSocketListener('curl_changed', () => {
-  if (collection.value) load()
+  if (collection.value) load(false)
 })
 
 onMounted(async () => {
@@ -276,7 +280,7 @@ function exportToExcel() {
           :icon="Download"
           @click="exportToExcel"
         >导出 Excel</el-button>
-        <el-button :icon="Refresh" @click="load">刷新</el-button>
+        <el-button :icon="Refresh" :loading="loading" @click="load(false)">刷新</el-button>
       </div>
 
       <!-- 空态 -->

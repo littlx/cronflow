@@ -7,7 +7,7 @@
  * - formatCellValue: 根据列 type 把原始值转成可显示字符串
  */
 import type { CacheCellType } from '@/api/types'
-import { formatDateTime } from './format'
+import { formatPlainDateTime } from './format'
 
 /** 解析 a.b[0].c 形式的路径为段数组。 */
 function parsePath(path: string): (string | number)[] {
@@ -113,16 +113,16 @@ export function formatCellValue(value: unknown, type: CacheCellType): string {
       // 支持 ISO 字符串 / Unix 秒 / 毫秒
       if (typeof value === 'number') {
         const ms = value > 1e12 ? value : value * 1000
-        return formatDateTime(new Date(ms).toISOString())
+        return formatPlainDateTime(new Date(ms).toISOString())
       }
       if (typeof value === 'string') {
         // 全数字串当时间戳
         if (/^\d+$/.test(value)) {
           const num = Number(value)
           const ms = num > 1e12 ? num : num * 1000
-          return formatDateTime(new Date(ms).toISOString())
+          return formatPlainDateTime(new Date(ms).toISOString())
         }
-        return formatDateTime(value)
+        return formatPlainDateTime(value)
       }
       return String(value)
     }
