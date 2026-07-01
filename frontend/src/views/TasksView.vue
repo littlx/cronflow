@@ -6,10 +6,11 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Upload, QuestionFilled } from '@element-plus/icons-vue'
+import { Plus, Upload, QuestionFilled, Setting } from '@element-plus/icons-vue'
 import { useTasksStore } from '@/stores/tasks'
 import { triggerTask } from '@/api/tasks'
 import { parseCurl, stringifyToCurl } from '@/utils/curl'
+import { copyToClipboard } from '@/utils/clipboard'
 import ParamForm from '@/components/ParamForm.vue'
 import type { Task, CacheItem } from '@/api/types'
 
@@ -64,12 +65,28 @@ interface CurlForm {
   handler_type: 'PURE_JSON' | 'NESTED_DATA' | 'RAW_RESPONSE'
   target_collection: string
   timeout: number | null
+  socks5_proxy: string
+}
+
+const configDlgVisible = ref(false)
+const defaultEnableSocks5 = ref(localStorage.getItem('default_enable_socks5') === 'true')
+const defaultSocks5Proxy = ref(localStorage.getItem('default_socks5_proxy') || 'socks5://172.17.41.3:7013')
+
+function onDefaultEnableChange(val: boolean) {
+  localStorage.setItem('default_enable_socks5', String(val))
+  ElMessage.success(`默认启用 SOCKS5: ${val ? '已开启' : '已关闭'}`)
+}
+
+function onDefaultProxyChange(val: string) {
+  localStorage.setItem('default_socks5_proxy', val)
+  ElMessage.success('默认 SOCKS5 代理已更新')
 }
 
 const emptyForm = (): CurlForm => ({
   name: '', description: '', url: '', method: 'GET',
   headers: '{}', params: '{}', data: '', handler_type: 'PURE_JSON',
   target_collection: '', timeout: null,
+  socks5_proxy: defaultEnableSocks5.value ? defaultSocks5Proxy.value : '',
 })
 const curlForm = ref<CurlForm>(emptyForm())
 
@@ -93,6 +110,7 @@ function openEdit(t: Task) {
     handler_type: cfg.handler_type || 'PURE_JSON',
     target_collection: cfg.target_collection || '',
     timeout: cfg.timeout ?? null,
+    socks5_proxy: cfg.socks5_proxy || '',
   }
   curlDlgVisible.value = true
 }
@@ -111,6 +129,7 @@ function openCopy(t: Task) {
     handler_type: cfg.handler_type || 'PURE_JSON',
     target_collection: cfg.target_collection ? (cfg.target_collection + '_copy') : '',
     timeout: cfg.timeout ?? null,
+    socks5_proxy: cfg.socks5_proxy || '',
   }
   curlDlgVisible.value = true
 }
@@ -123,9 +142,10 @@ async function copyCurlCommand(t: Task) {
     headers: cfg.headers,
     params: cfg.params,
     data: cfg.data,
+    socks5_proxy: cfg.socks5_proxy,
   })
   try {
-    await navigator.clipboard.writeText(cmd)
+    await copyToClipboard(cmd)
     ElMessage.success('cURL 命令已复制到剪贴板')
   } catch (err) {
     ElMessage.error('复制失败')
@@ -158,6 +178,7 @@ async function submitCurl() {
       handler_type: curlForm.value.handler_type,
       target_collection: curlForm.value.target_collection,
       timeout: curlForm.value.timeout,
+      socks5_proxy: curlForm.value.socks5_proxy || null,
     },
   }
   try {
@@ -210,6 +231,7 @@ function importFromCurl() {
       handler_type: 'PURE_JSON',
       target_collection: guessCollection(p.url),
       timeout: null,
+      socks5_proxy: p.socks5_proxy || (defaultEnableSocks5.value ? defaultSocks5Proxy.value : ''),
     }
     importDlgVisible.value = false
     curlInput.value = ''
@@ -278,6 +300,7 @@ onMounted(() => tasks.load())
               <div style="margin-bottom:14px;display:flex;gap:8px">
                 <el-button type="primary" :icon="Plus" @click="openCreate">新建 cURL 任务</el-button>
                 <el-button :icon="Upload" @click="importDlgVisible = true">从 cURL 导入</el-button>
+                <el-button :icon="Setting" @click="configDlgVisible = true">配置</el-button>
               </div>
               <el-empty v-if="!tasks.curl.length" description="暂无 cURL 任务" />
               <el-table v-else :data="tasks.curl" v-loading="tasks.loading" size="small">
@@ -371,6 +394,9 @@ onMounted(() => tasks.load())
                 <el-option label="原始响应" value="RAW_RESPONSE" />
               </el-select>
             </el-form-item>
+            <el-form-item label="SOCKS5代理">
+              <el-input v-model="curlForm.socks5_proxy" placeholder="可选，如 socks5://172.17.41.3:7013" />
+            </el-form-item>
           </el-form>
         </section>
 
@@ -459,6 +485,25 @@ onMounted(() => tasks.load())
           style="background:#000;color:#ededed;border:1px solid #1a1a1a;padding:12px 14px;border-radius:6px;margin-bottom:8px;font-family:'Geist Mono','JetBrains Mono','SF Mono',Menlo,monospace;font-size:12px;line-height:1.55;white-space:pre-wrap"
         >{{ JSON.stringify(d.document, null, 2) }}</pre>
       </div>
+    </el-dialog>
+
+    <!-- 任务配置弹窗 -->
+    <el-dialog v-model="configDlgVisible" title="cURL 任务全局配置" width="460px" destroy-on-close>
+      <el-form label-width="150px" label-position="left" style="margin-top: 10px;">
+        <el-form-item label="默认启用 SOCKS5">
+          <el-switch v-model="defaultEnableSocks5" @change="onDefaultEnableChange" />
+        </el-form-item>
+        <el-form-item label="默认 SOCKS5 代理">
+          <el-input 
+            v-model="defaultSocks5Proxy" 
+            placeholder="socks5://172.17.41.3:7013" 
+            @change="onDefaultProxyChange"
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button type="primary" @click="configDlgVisible = false">确定</el-button>
+      </template>
     </el-dialog>
   </div>
 </template>

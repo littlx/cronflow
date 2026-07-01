@@ -116,7 +116,7 @@ function inferType(value: unknown): CacheCellType {
 }
 
 function addColumn() {
-  columns.value.push({ key: '', label: '', type: 'text' })
+  columns.value.push({ key: '', label: '', type: 'text', summary_type: 'none' })
 }
 
 function removeColumn(i: number) {
@@ -145,6 +145,7 @@ function autoDiscover() {
       key: p,
       label: p,
       type: inferType(getByPath(sampleRow.value, p)),
+      summary_type: 'none',
     })
   }
   if (!added.length) {
@@ -175,6 +176,7 @@ async function save() {
       label: (c.label || '').trim() || key,
       type: c.type || 'text',
       width: c.width ?? undefined,
+      summary_type: c.summary_type || 'none',
     })
   }
   if (!cleaned.length) {
@@ -255,11 +257,12 @@ async function clearConfig() {
         <table class="cols-table">
           <thead>
             <tr>
-              <th style="width:34%">字段 (key)</th>
-              <th style="width:22%">列名 (label)</th>
-              <th style="width:18%">类型</th>
+              <th style="width:30%">字段 (key)</th>
+              <th style="width:18%">列名 (label)</th>
+              <th style="width:16%">类型</th>
               <th style="width:12%">宽度</th>
-              <th style="width:14%">操作</th>
+              <th style="width:12%">合计类型</th>
+              <th style="width:12%">操作</th>
             </tr>
           </thead>
           <tbody>
@@ -294,6 +297,16 @@ async function clearConfig() {
                   controls-position="right"
                   style="width:100%"
                 />
+              </td>
+              <td>
+                <el-select v-model="col.summary_type" placeholder="无" size="small" style="width:100%">
+                  <el-option value="none" label="无" />
+                  <el-option value="sum" label="求和" />
+                  <el-option value="avg" label="平均值" />
+                  <el-option value="min" label="最小值" />
+                  <el-option value="max" label="最大值" />
+                  <el-option value="count" label="计数" />
+                </el-select>
               </td>
               <td class="ops">
                 <el-button link size="small" :icon="ArrowUp" @click="moveUp(i)" />

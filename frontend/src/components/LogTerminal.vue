@@ -11,6 +11,7 @@ import { ElMessage } from 'element-plus'
 import type { TaskLog } from '@/api/types'
 import StatusTag from './StatusTag.vue'
 import { formatDateTime, formatDuration } from '@/utils/format'
+import { copyToClipboard } from '@/utils/clipboard'
 
 const props = defineProps<{ log: TaskLog | null }>()
 
@@ -36,7 +37,7 @@ async function copy() {
     ? `[INFO] Task executed successfully. Return value:\n${formatContent(log.result)}`
     : `[ERROR] Task execution failed:\n${log.error}${log.result ? `\n\n[INFO] Partial result:\n${formatContent(log.result)}` : ''}`
   try {
-    await navigator.clipboard.writeText(text)
+    await copyToClipboard(text)
     ElMessage.success('日志已复制到剪贴板')
   } catch {
     ElMessage.error('复制失败')

@@ -5,10 +5,19 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 
+class AlertRuleSchema(BaseModel):
+    column: str
+    operator: Literal["eq", "ne", "contains", "gt", "lt", "is_today"]
+    value: str = ""
+
+
 class DashboardTableConfigSchema(BaseModel):
     collection: str
     width: Literal["third", "half", "full"]
     visibleColumns: list[str] = Field(default_factory=list)
+    sortBy: str | None = None
+    sortOrder: Literal["asc", "desc"] | None = None
+    alertRules: list[AlertRuleSchema] = Field(default_factory=list)
 
 
 class DashboardConfigUpsert(BaseModel):

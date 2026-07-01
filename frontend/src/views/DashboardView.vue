@@ -7,7 +7,7 @@
 -->
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
-import { Setting, ArrowRight, Cpu, Refresh } from '@element-plus/icons-vue'
+import { Setting, ArrowRight, Cpu, Refresh, Plus, Delete } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useStatsStore } from '@/stores/stats'
 import { useTasksStore } from '@/stores/tasks'
@@ -186,10 +186,19 @@ async function removeSchedule(s: any) {
 const settingsVisible = ref(false)
 const activeConfigCol = ref<string | null>(null)
 
+interface AlertRule {
+  column: string
+  operator: 'eq' | 'ne' | 'contains' | 'gt' | 'lt' | 'is_today'
+  value: string
+}
+
 interface DashboardTableConfig {
   collection: string
   width: 'third' | 'half' | 'full'
   visibleColumns: string[]
+  sortBy?: string | null
+  sortOrder?: 'asc' | 'desc' | null
+  alertRules?: AlertRule[]
 }
 
 const chosenTables = ref<DashboardTableConfig[]>([])
@@ -425,12 +434,96 @@ function toggleTableSelection(col: string, val: any) {
       chosenTables.value.push({
         collection: col,
         width: 'full',
-        visibleColumns: []
+        visibleColumns: [],
+        sortBy: null,
+        sortOrder: null,
+        alertRules: []
       })
     }
   } else {
     chosenTables.value = chosenTables.value.filter(t => t.collection !== col)
   }
+}
+
+function getTableAlertRules(col: string): AlertRule[] {
+  const t = chosenTables.value.find(t => t.collection === col)
+  if (t) {
+    if (!t.alertRules) {
+      t.alertRules = []
+    }
+    return t.alertRules
+  }
+  return []
+}
+
+function addAlertRule(col: string) {
+  const t = chosenTables.value.find(t => t.collection === col)
+  if (t) {
+    if (!t.alertRules) {
+      t.alertRules = []
+    }
+    const cols = allViewConfigs.value[col]?.columns || []
+    const firstColKey = cols.length > 0 ? cols[0].key : ''
+    t.alertRules.push({
+      column: firstColKey,
+      operator: 'eq',
+      value: ''
+    })
+  }
+}
+
+function removeAlertRule(col: string, index: number) {
+  const t = chosenTables.value.find(t => t.collection === col)
+  if (t && t.alertRules) {
+    t.alertRules.splice(index, 1)
+  }
+}
+
+function shouldAlertRow(r: any, item: DashboardTableConfig): boolean {
+  if (!item.alertRules || item.alertRules.length === 0) return false
+  
+  return item.alertRules.some(rule => {
+    if (!rule.column || !rule.operator) return false
+    const val = getByPath(r, rule.column)
+    
+    if (rule.operator === 'is_today') {
+      if (!val) return false
+      try {
+        const d = new Date(val as any)
+        if (isNaN(d.getTime())) return false
+        const today = new Date()
+        return d.getFullYear() === today.getFullYear() &&
+               d.getMonth() === today.getMonth() &&
+               d.getDate() === today.getDate()
+      } catch {
+        return false
+      }
+    }
+    
+    const compVal = rule.value || ''
+    
+    if (rule.operator === 'eq') {
+      return String(val) === compVal
+    }
+    if (rule.operator === 'ne') {
+      return String(val) !== compVal
+    }
+    if (rule.operator === 'contains') {
+      return val != null && String(val).toLowerCase().includes(compVal.toLowerCase())
+    }
+    if (rule.operator === 'gt') {
+      const numVal = Number(val)
+      const numComp = Number(compVal)
+      return !isNaN(numVal) && !isNaN(numComp) && numVal > numComp
+    }
+    if (rule.operator === 'lt') {
+      const numVal = Number(val)
+      const numComp = Number(compVal)
+      return !isNaN(numVal) && !isNaN(numComp) && numVal < numComp
+    }
+    
+    return false
+  })
 }
 
 function getTableWidth(col: string): 'third' | 'half' | 'full' {
@@ -451,6 +544,86 @@ function getTableVisibleColumns(col: string): string[] {
 function setTableVisibleColumns(col: string, columns: any) {
   const t = chosenTables.value.find(t => t.collection === col)
   if (t) t.visibleColumns = columns
+}
+
+function getTableSortBy(col: string): string | null {
+  const t = chosenTables.value.find(t => t.collection === col)
+  return t ? (t.sortBy || null) : null
+}
+
+function setTableSortBy(col: string, sortBy: string | null) {
+  const t = chosenTables.value.find(t => t.collection === col)
+  if (t) {
+    t.sortBy = sortBy
+    if (sortBy && !t.sortOrder) {
+      t.sortOrder = 'asc'
+    }
+  }
+}
+
+function getTableSortOrder(col: string): 'asc' | 'desc' {
+  const t = chosenTables.value.find(t => t.collection === col)
+  return t ? (t.sortOrder || 'asc') : 'asc'
+}
+
+function setTableSortOrder(col: string, sortOrder: 'asc' | 'desc') {
+  const t = chosenTables.value.find(t => t.collection === col)
+  if (t) {
+    t.sortOrder = sortOrder
+  }
+}
+
+function toggleTableSort(item: DashboardTableConfig, key: string) {
+  if (item.sortBy === key) {
+    if (item.sortOrder === 'asc') {
+      item.sortOrder = 'desc'
+    } else {
+      item.sortBy = null
+      item.sortOrder = null
+    }
+  } else {
+    item.sortBy = key
+    item.sortOrder = 'asc'
+  }
+}
+
+function getSortedRowsForTable(item: DashboardTableConfig) {
+  const tableData = cacheTables.value[item.collection]
+  if (!tableData || !tableData.rows) return []
+  const rows = [...tableData.rows]
+  if (!item.sortBy) {
+    return rows
+  }
+  const sortBy = item.sortBy
+  const sortOrder = item.sortOrder || 'asc'
+  
+  const colDef = tableData.viewConfig?.columns?.find(c => c.key === sortBy)
+  const colType = colDef ? colDef.type : 'string'
+  
+  rows.sort((a, b) => {
+    const valA = getByPath(a, sortBy)
+    const valB = getByPath(b, sortBy)
+    
+    if (valA === undefined || valA === null) return 1
+    if (valB === undefined || valB === null) return -1
+    
+    if (colType === 'number') {
+      const numA = Number(valA)
+      const numB = Number(valB)
+      if (!isNaN(numA) && !isNaN(numB)) {
+        return sortOrder === 'asc' ? numA - numB : numB - numA
+      }
+    }
+    
+    const strA = String(valA).toLowerCase()
+    const strB = String(valB).toLowerCase()
+    
+    if (strA < strB) return sortOrder === 'asc' ? -1 : 1
+    if (strA > strB) return sortOrder === 'asc' ? 1 : -1
+    return 0
+  })
+  
+  return rows
 }
 
 function getVisibleColumnsForTable(item: DashboardTableConfig) {
@@ -522,7 +695,7 @@ watch(() => stats.ready, (ready) => {
   <div class="page-container">
     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px">
       <h2 class="page-title" style="margin:0">监控中心</h2>
-      <el-button :icon="Setting" size="default" @click="settingsVisible = true">配置展示表格</el-button>
+      <el-button :icon="Setting" size="default" class="btn-configure-tables" @click="settingsVisible = true">配置展示表格</el-button>
     </div>
 
     <el-skeleton :loading="!stats.ready" animated :rows="6">
@@ -553,7 +726,7 @@ watch(() => stats.ready, (ready) => {
               </div>
               <div class="cache-table-actions">
                 <el-tooltip
-                  :content="associatedTasks(item.collection).length ? '更新缓存' : '未找到与该缓存表关联的 cURL 任务'"
+                  :content="associatedTasks(item.collection).length ? '更新缓存' : '未找到与该缓存表关联 cURL 任务'"
                   placement="top"
                 >
                   <span>
@@ -561,6 +734,7 @@ watch(() => stats.ready, (ready) => {
                       size="small"
                       type="primary"
                       link
+                      class="btn-refresh-cache"
                       :icon="Refresh"
                       :disabled="!associatedTasks(item.collection).length"
                       :loading="cacheTables[item.collection]?.triggerLoading"
@@ -570,7 +744,7 @@ watch(() => stats.ready, (ready) => {
                 </el-tooltip>
                 <el-tooltip content="查看全部数据" placement="top">
                   <router-link :to="`/cache?collection=${item.collection}`" style="margin-left: 8px;">
-                    <el-button size="small" type="primary" link :icon="ArrowRight" />
+                    <el-button size="small" type="primary" link class="btn-arrow-right" :icon="ArrowRight" />
                   </router-link>
                 </el-tooltip>
               </div>
@@ -583,13 +757,32 @@ watch(() => stats.ready, (ready) => {
                   <table class="dashboard-cols-table">
                     <thead>
                       <tr>
-                        <th v-for="c in getVisibleColumnsForTable(item)" :key="c.key">
-                          {{ c.label || c.key }}
+                        <th
+                          v-for="c in getVisibleColumnsForTable(item)"
+                          :key="c.key"
+                          @click="toggleTableSort(item, c.key)"
+                          style="cursor: pointer; user-select: none;"
+                          class="sortable-header"
+                          title="点击切换排序"
+                        >
+                          <div style="display: inline-flex; align-items: center; gap: 4px;">
+                            <span>{{ c.label || c.key }}</span>
+                            <span v-if="item.sortBy === c.key" class="sort-icon" style="color: var(--el-color-primary); font-weight: bold;">
+                              {{ item.sortOrder === 'desc' ? '↓' : '↑' }}
+                            </span>
+                            <span v-else class="sort-placeholder" style="opacity: 0; transition: opacity 0.2s;">
+                              ↑
+                            </span>
+                          </div>
                         </th>
                       </tr>
                     </thead>
                     <tbody>
-                      <tr v-for="(r, ri) in (cacheTables[item.collection].rows || []).slice(0, 5)" :key="ri">
+                      <tr
+                        v-for="(r, ri) in getSortedRowsForTable(item).slice(0, 5)"
+                        :key="ri"
+                        :class="{ 'row-warning': shouldAlertRow(r, item) }"
+                      >
                         <td v-for="c in getVisibleColumnsForTable(item)" :key="c.key" class="preview-cell">
                           {{ formatCellValue(getByPath(r, c.key), c.type) }}
                         </td>
@@ -800,6 +993,99 @@ watch(() => stats.ready, (ready) => {
                   此数据表尚未配置列定义，将默认显示全部推断出的列。
                 </div>
               </div>
+
+              <!-- 排序配置 -->
+              <div class="detail-section">
+                <div class="detail-section-title">默认排序列</div>
+                <div style="display: flex; flex-wrap: wrap; gap: 12px; align-items: center;">
+                  <el-select
+                    :model-value="getTableSortBy(activeConfigCol)"
+                    @change="(val: any) => setTableSortBy(activeConfigCol!, val)"
+                    placeholder="请选择排序列"
+                    clearable
+                    size="default"
+                    style="width: 200px;"
+                  >
+                    <el-option
+                      v-for="c in (allViewConfigs[activeConfigCol]?.columns || [])"
+                      :key="c.key"
+                      :label="c.label || c.key"
+                      :value="c.key"
+                    />
+                  </el-select>
+
+                  <el-radio-group
+                    v-if="getTableSortBy(activeConfigCol)"
+                    :model-value="getTableSortOrder(activeConfigCol)"
+                    @change="(val: any) => setTableSortOrder(activeConfigCol!, val)"
+                    size="default"
+                  >
+                    <el-radio-button value="asc">升序</el-radio-button>
+                    <el-radio-button value="desc">降序</el-radio-button>
+                  </el-radio-group>
+                </div>
+              </div>
+
+              <!-- 警示规则配置 -->
+              <div class="detail-section">
+                <div class="detail-section-title">数据行警示规则 (满足条件时，该行以警示色显示)</div>
+                <div v-if="getTableAlertRules(activeConfigCol).length" class="alert-rules-list" style="display: flex; flex-direction: column; gap: 8px;">
+                  <div
+                    v-for="(rule, rIdx) in getTableAlertRules(activeConfigCol)"
+                    :key="rIdx"
+                    style="display: flex; gap: 8px; align-items: center;"
+                  >
+                    <el-select
+                      v-model="rule.column"
+                      placeholder="选择列"
+                      size="default"
+                      style="width: 160px;"
+                    >
+                      <el-option
+                        v-for="c in (allViewConfigs[activeConfigCol]?.columns || [])"
+                        :key="c.key"
+                        :label="c.label || c.key"
+                        :value="c.key"
+                      />
+                    </el-select>
+
+                    <el-select
+                      v-model="rule.operator"
+                      placeholder="条件"
+                      size="default"
+                      style="width: 120px;"
+                    >
+                      <el-option value="eq" label="等于" />
+                      <el-option value="ne" label="不等于" />
+                      <el-option value="contains" label="包含" />
+                      <el-option value="gt" label="大于" />
+                      <el-option value="lt" label="小于" />
+                      <el-option value="is_today" label="日期是今天" />
+                    </el-select>
+
+                    <el-input
+                      v-if="rule.operator !== 'is_today'"
+                      v-model="rule.value"
+                      placeholder="值"
+                      size="default"
+                      style="width: 140px;"
+                    />
+
+                    <el-button
+                      type="danger"
+                      link
+                      size="default"
+                      :icon="Delete"
+                      @click="removeAlertRule(activeConfigCol!, rIdx)"
+                    />
+                  </div>
+                </div>
+                <div style="margin-top: 4px;">
+                  <el-button type="primary" plain size="small" :icon="Plus" @click="addAlertRule(activeConfigCol!)">
+                    添加警示规则
+                  </el-button>
+                </div>
+              </div>
             </div>
             
             <div v-else class="detail-empty-state">
@@ -917,6 +1203,13 @@ watch(() => stats.ready, (ready) => {
   border-radius: var(--radius);
   padding: 16px;
   background: var(--surface);
+  transition: all 0.4s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+.cache-table-wrapper:hover {
+  border-style: solid;
+  border-color: var(--el-color-primary-light-5);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.15);
+  transform: translateY(-2px);
 }
 .width-third {
   flex: 0 0 calc(33.333% - 13.33px);
@@ -967,13 +1260,16 @@ watch(() => stats.ready, (ready) => {
   padding: 10px 12px;
   cursor: pointer;
   border-bottom: 1px solid var(--border);
-  transition: background 0.15s ease;
+  transition: all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1);
+  border-left: 3px solid transparent;
 }
 .sidebar-item:hover {
   background: rgba(255, 255, 255, 0.05);
+  padding-left: 18px;
 }
 .sidebar-item.is-active {
   background: rgba(255, 255, 255, 0.08);
+  border-left: 3px solid var(--el-color-primary);
 }
 .sidebar-item :deep(.el-checkbox) {
   margin-right: 0 !important;
@@ -999,6 +1295,8 @@ watch(() => stats.ready, (ready) => {
 }
 .sidebar-item.drag-over {
   background: rgba(64, 158, 255, 0.15) !important;
+  border-top: 1px dashed var(--el-color-primary);
+  border-bottom: 1px dashed var(--el-color-primary);
 }
 .settings-detail {
   flex: 1;
@@ -1069,5 +1367,48 @@ watch(() => stats.ready, (ready) => {
 }
 .page-container {
   max-width: 100% !important;
+}
+.sortable-header {
+  transition: background-color 0.2s;
+}
+.sortable-header:hover {
+  background: var(--accents-2) !important;
+}
+.sortable-header:hover .sort-placeholder {
+  opacity: 0.6 !important;
+}
+.row-warning {
+  background-color: rgba(245, 108, 108, 0.15) !important;
+  color: var(--el-color-danger) !important;
+}
+.row-warning:hover {
+  background-color: rgba(245, 108, 108, 0.25) !important;
+}
+.row-warning td {
+  border-bottom: 1px solid rgba(245, 108, 108, 0.3) !important;
+}
+.btn-configure-tables :deep(.el-icon) {
+  transition: transform 0.4s ease;
+}
+.btn-configure-tables:hover :deep(.el-icon) {
+  transform: rotate(180deg);
+}
+.btn-refresh-cache {
+  transition: transform 0.3s ease;
+}
+.btn-refresh-cache:hover:not(.is-disabled) {
+  transform: rotate(180deg) scale(1.1);
+}
+.btn-arrow-right {
+  transition: transform 0.2s ease;
+}
+.btn-arrow-right:hover {
+  transform: translateX(3px) scale(1.1);
+}
+.dashboard-cols-table tr {
+  transition: background-color 0.2s ease;
+}
+:deep(.el-table__row) {
+  transition: background-color 0.2s ease;
 }
 </style>

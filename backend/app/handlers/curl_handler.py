@@ -118,6 +118,7 @@ class CurlHandler(TaskHandler):
         target_collection = cfg.get("target_collection") or "default"
         # 超时可配 (修复旧版硬编码 30s 问题)
         timeout = float(cfg.get("timeout") or settings.task_default_timeout)
+        socks5_proxy = cfg.get("socks5_proxy") or None
 
         if not url:
             raise RuntimeError(f"curl task {resolved.ref} 缺少 url")
@@ -149,7 +150,7 @@ class CurlHandler(TaskHandler):
                 if not ct:
                     headers["Content-Type"] = "application/x-www-form-urlencoded"
 
-        async with httpx.AsyncClient(timeout=timeout) as client:
+        async with httpx.AsyncClient(timeout=timeout, proxy=socks5_proxy) as client:
             resp = await client.request(**req_kwargs)
 
         # 4xx 是业务错误 (URL 错/token 过期等), 终态失败不重试

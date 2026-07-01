@@ -45,6 +45,7 @@ class CurlHandlerConfig(BaseModel):
     handler_type: str = "PURE_JSON"          # PURE_JSON | NESTED_DATA | RAW_RESPONSE
     target_collection: str
     timeout: int | None = None               # 秒, None 走默认值
+    socks5_proxy: str | None = None          # socks5 代理地址
 
 
 class CurlTaskCreate(BaseModel):

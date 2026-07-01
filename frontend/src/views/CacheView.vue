@@ -179,6 +179,89 @@ function colWidth(w?: number | null) {
   return w ? `${w}px` : undefined
 }
 
+const hasSummary = computed(() => {
+  if (!viewConfig.value || !viewConfig.value.columns) return false
+  return viewConfig.value.columns.some(
+    (c) => c.summary_type && c.summary_type !== 'none'
+  )
+})
+
+interface SummaryMethodParams {
+  columns: any[]
+  data: any[]
+}
+
+function calculateStats(values: any[], type: string): string {
+  if (type === 'count') {
+    return `${values.length}`
+  }
+
+  const numValues = values
+    .map(val => Number(val))
+    .filter(val => !isNaN(val))
+
+  if (numValues.length === 0) {
+    return '-'
+  }
+
+  if (type === 'sum') {
+    const sum = numValues.reduce((prev, curr) => prev + curr, 0)
+    return Number.isInteger(sum) ? `${sum}` : `${sum.toFixed(2)}`
+  }
+  if (type === 'avg') {
+    const sum = numValues.reduce((prev, curr) => prev + curr, 0)
+    const avg = sum / numValues.length
+    return Number.isInteger(avg) ? `${avg}` : `${avg.toFixed(2)}`
+  }
+  if (type === 'min') {
+    const min = Math.min(...numValues)
+    return `${min}`
+  }
+  if (type === 'max') {
+    const max = Math.max(...numValues)
+    return `${max}`
+  }
+  return '-'
+}
+
+function getSummaryValues(param: SummaryMethodParams) {
+  const { columns: tableColumns, data } = param
+  const sums: string[] = []
+  
+  if (!viewConfig.value || !viewConfig.value.columns) return sums
+
+  tableColumns.forEach((column, index) => {
+    // Show '当前页合计\n全部合计' on the first column by default if no summary type is set
+    if (index === 0) {
+      const firstColCfg = viewConfig.value?.columns.find(c => c.key === column.property)
+      if (!firstColCfg || !firstColCfg.summary_type || firstColCfg.summary_type === 'none') {
+        sums[index] = '本页合计\n全部合计'
+        return
+      }
+    }
+
+    const colCfg = viewConfig.value?.columns.find(c => c.key === column.property)
+    if (!colCfg || !colCfg.summary_type || colCfg.summary_type === 'none') {
+      sums[index] = '\n'
+      return
+    }
+
+    const type = colCfg.summary_type
+    
+    // 1. Calculate current page stats
+    const pageValues = data.map(item => getByPath(item, column.property))
+    const pageResult = calculateStats(pageValues, type)
+
+    // 2. Calculate overall cache stats
+    const allValues = allRows.value.map(item => getByPath(item, column.property))
+    const allResult = calculateStats(allValues, type)
+
+    sums[index] = `${pageResult}\n${allResult}`
+  })
+
+  return sums
+}
+
 // 单元格点击 (json 类型 → 弹抽屉)
 const jsonDrawerVisible = ref(false)
 const jsonDrawerValue = ref<unknown>(null)
@@ -326,10 +409,17 @@ function exportToExcel() {
           </template>
 
           <template v-else>
-            <el-table :data="pagedRows" size="small" stripe>
+            <el-table
+              :data="pagedRows"
+              size="small"
+              stripe
+              :show-summary="hasSummary"
+              :summary-method="getSummaryValues"
+            >
               <el-table-column
                 v-for="col in viewConfig.columns"
                 :key="col.key"
+                :prop="col.key"
                 :label="col.label || col.key"
                 :width="colWidth(col.width)"
                 :min-width="col.width ? undefined : 120"
@@ -456,4 +546,8 @@ function exportToExcel() {
 }
 .bool-cell.ok { color: var(--geist-success); font-weight: 600; }
 .bool-cell.no { color: var(--geist-error); font-weight: 600; }
+:deep(.el-table__footer-wrapper .cell) {
+  white-space: pre-line !important;
+  line-height: 1.6 !important;
+}
 </style>

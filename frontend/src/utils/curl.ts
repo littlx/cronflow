@@ -14,6 +14,7 @@ export interface ParsedCurl {
   params: Record<string, string>              // 从 URL query 解析出的键值; GET 任务尤其有用
   data: Record<string, any> | string | null
   rawData: string
+  socks5_proxy: string | null
 }
 
 const VALUE_OPTS = new Set([
@@ -25,6 +26,7 @@ const VALUE_OPTS = new Set([
   '-e', '--referer',
   '-u', '--user',
   '--json',
+  '-x', '--proxy',
 ])
 
 function looksLikeUrl(s: string): boolean {
@@ -47,7 +49,7 @@ export function parseCurl(command: string): ParsedCurl {
   let start = 0
   if (tokens[0] === 'curl' || tokens[0].endsWith('/curl')) start = 1
 
-  const result: ParsedCurl = { url: '', method: 'GET', headers: {}, params: {}, data: null, rawData: '' }
+  const result: ParsedCurl = { url: '', method: 'GET', headers: {}, params: {}, data: null, rawData: '', socks5_proxy: null }
   let hasData = false
 
   for (let i = start; i < tokens.length; i++) {
@@ -74,11 +76,13 @@ export function parseCurl(command: string): ParsedCurl {
         if (!hasHeader(result.headers, 'Cookie')) result.headers['Cookie'] = val
       } else if (key === '--referer') {
         if (!hasHeader(result.headers, 'Referer')) result.headers['Referer'] = val
+      } else if (key === '--proxy') {
+        result.socks5_proxy = val
       }
       continue
     }
 
-    if (/^-[XHdAbeu].+/i.test(part) && !part.startsWith('--')) {
+    if (/^-[XHdAbeux].+/i.test(part) && !part.startsWith('--')) {
       const flag = part.slice(0, 2)
       const val = part.slice(2)
       if (flag === '-X') result.method = val.toUpperCase()
@@ -88,6 +92,7 @@ export function parseCurl(command: string): ParsedCurl {
       else if (flag === '-b' && !hasHeader(result.headers, 'Cookie')) result.headers['Cookie'] = val
       else if (flag === '-e' && !hasHeader(result.headers, 'Referer')) result.headers['Referer'] = val
       else if (flag === '-u') setBasicAuth(result.headers, val)
+      else if (flag === '-x') result.socks5_proxy = val
       continue
     }
 
@@ -114,6 +119,8 @@ export function parseCurl(command: string): ParsedCurl {
         if (!hasHeader(result.headers, 'Referer')) result.headers['Referer'] = val
       } else if (part === '-u' || part === '--user') {
         setBasicAuth(result.headers, val)
+      } else if (part === '-x' || part === '--proxy') {
+        result.socks5_proxy = val
       }
       continue
     }
@@ -229,6 +236,7 @@ export function stringifyToCurl(cfg: {
   headers?: Record<string, string>
   params?: Record<string, any>
   data?: any
+  socks5_proxy?: string | null
 }): string {
   let fullUrl = cfg.url || ''
   if (cfg.params && Object.keys(cfg.params).length > 0) {
@@ -260,12 +268,35 @@ export function stringifyToCurl(cfg: {
     if (typeof cfg.data === 'string') {
       dataStr = cfg.data
     } else {
-      dataStr = JSON.stringify(cfg.data)
+      let isFormUrlencoded = false
+      if (cfg.headers) {
+        for (const [k, v] of Object.entries(cfg.headers)) {
+          if (k.toLowerCase() === 'content-type' && v.toLowerCase().includes('application/x-www-form-urlencoded')) {
+            isFormUrlencoded = true
+            break
+          }
+        }
+      }
+      if (isFormUrlencoded && cfg.data && typeof cfg.data === 'object') {
+        const q = new URLSearchParams()
+        for (const [k, v] of Object.entries(cfg.data)) {
+          if (k && v !== undefined && v !== null) {
+            q.append(k, String(v))
+          }
+        }
+        dataStr = q.toString()
+      } else {
+        dataStr = JSON.stringify(cfg.data)
+      }
     }
     if (dataStr) {
       const escapedData = dataStr.replace(/'/g, "'\\''")
       cmd += ` -d '${escapedData}'`
     }
+  }
+
+  if (cfg.socks5_proxy) {
+    cmd += ` -x '${cfg.socks5_proxy}'`
   }
 
   return cmd

@@ -39,6 +39,7 @@ export interface CurlHandlerConfig {
   handler_type: 'PURE_JSON' | 'NESTED_DATA' | 'RAW_RESPONSE'
   target_collection: string
   timeout?: number | null
+  socks5_proxy?: string | null
 }
 
 export interface CurlTaskCreate {
@@ -102,11 +103,14 @@ export interface CacheItem {
 
 export type CacheCellType = 'text' | 'number' | 'datetime' | 'boolean' | 'json'
 
+export type CacheSummaryType = 'none' | 'sum' | 'avg' | 'min' | 'max' | 'count'
+
 export interface CacheColumnConfig {
   key: string                       // JSON 路径(支持 a.b.c / a[0].b)
   label: string
   type: CacheCellType
   width?: number | null
+  summary_type?: CacheSummaryType | null
 }
 
 export interface CacheViewConfig {
@@ -168,10 +172,19 @@ export interface NotificationLog {
 
 // ---- 监控中心看板配置 ----
 
+export interface AlertRule {
+  column: string
+  operator: 'eq' | 'ne' | 'contains' | 'gt' | 'lt' | 'is_today'
+  value: string
+}
+
 export interface DashboardTableConfig {
   collection: string
   width: 'third' | 'half' | 'full'
   visibleColumns: string[]
+  sortBy?: string | null
+  sortOrder?: 'asc' | 'desc' | null
+  alertRules?: AlertRule[]
 }
 
 export interface DashboardConfig {

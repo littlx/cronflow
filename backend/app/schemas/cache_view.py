@@ -8,6 +8,9 @@ from pydantic import BaseModel, Field
 CellType = Literal["text", "number", "datetime", "boolean", "json"]
 
 
+SummaryType = Literal["none", "sum", "avg", "min", "max", "count"]
+
+
 class CacheColumnConfig(BaseModel):
     """单列定义。
 
@@ -15,12 +18,14 @@ class CacheColumnConfig(BaseModel):
     label — 表头显示
     type  — 单元格渲染类型
     width — 列宽(像素), 可选
+    summary_type — 合计类型, 可选
     """
 
     key: str
     label: str
     type: CellType = "text"
     width: int | None = None
+    summary_type: SummaryType | None = None
 
 
 class CacheViewConfigUpsert(BaseModel):
